@@ -285,6 +285,42 @@ export class Game {
     this.opponentPlayer.score -= remainingPoints;
   }
 
+  /**
+   * Preview the current pending placement without committing.
+   * Returns validation result, formed words, and score estimate.
+   */
+  previewMove(): { valid: boolean; words: WordResult[]; totalScore: number; error?: string } {
+    const pending = this.getPendingTiles();
+    if (pending.length === 0) {
+      return { valid: false, words: [], totalScore: 0, error: 'No tiles placed' };
+    }
+
+    const validationError = ScoreCalculator.validatePlacement(
+      pending,
+      this.board.hasTiles(),
+      this.board.isCenterOccupied(),
+      (r, c) => this.board.isInBounds(r, c),
+      (r, c) => this.board.isOccupied(r, c)
+    );
+
+    if (validationError) {
+      return { valid: false, words: [], totalScore: 0, error: validationError };
+    }
+
+    const words = this.board.findWords(pending);
+    if (words.length === 0) {
+      return { valid: false, words: [], totalScore: 0, error: 'No words formed' };
+    }
+
+    const totalScore = ScoreCalculator.calculate(
+      words,
+      pending.length,
+      (r, c) => this.board.isPremiumUsed(r, c)
+    );
+
+    return { valid: true, words, totalScore };
+  }
+
   /** Get the winner (or null if tie / game not over) */
   getWinner(): Player | null {
     if (this.phase !== 'gameover') return null;
