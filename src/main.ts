@@ -1,6 +1,7 @@
 import './ui/styles.css';
 import { HomePage } from './ui/HomePage.js';
 import { GameUI } from './ui/GameUI.js';
+import { GamePersistence } from './game/Persistence.js';
 
 type Screen = 'home' | 'game';
 
@@ -11,27 +12,49 @@ function init(): void {
     return;
   }
 
-  let currentScreen: Screen = 'home';
   let currentComponent: HomePage | GameUI | null = null;
 
   function showHome(): void {
-    currentScreen = 'home';
-    const home = new HomePage(root!, (config) => {
-      showGame(config.player1Name, config.player2Name);
-    });
+    const hasSaved = GamePersistence.hasSavedGame();
+    const home = new HomePage(
+      root!,
+      (config) => {
+        // Starting a new game — check if overwriting saved game
+        if (hasSaved && !confirm('Start a new game? Your saved game will be lost.')) {
+          return;
+        }
+        GamePersistence.clear();
+        showGame(config.player1Name, config.player2Name);
+      },
+      () => {
+        // Continue saved game
+        const data = GamePersistence.load();
+        if (data) {
+          const game = GamePersistence.restoreGame(data);
+          showGameFrom(game);
+        }
+      },
+      hasSaved
+    );
     currentComponent = home;
     home.render();
   }
 
   function showGame(p1: string, p2: string): void {
-    currentScreen = 'game';
-    const game = new GameUI(root!, p1, p2, () => {
+    const gameUI = new GameUI(root!, undefined, () => {
       showHome();
     });
-    currentComponent = game;
+    currentComponent = gameUI;
   }
 
-  // Check URL params for direct game entry
+  function showGameFrom(game: import('./game/Game.js').Game): void {
+    const gameUI = new GameUI(root!, game, () => {
+      showHome();
+    });
+    currentComponent = gameUI;
+  }
+
+  // URL param direct entry?game=1
   const params = new URLSearchParams(window.location.search);
   if (params.has('game') && params.get('game') === '1') {
     const p1 = params.get('p1') || 'Player 1';

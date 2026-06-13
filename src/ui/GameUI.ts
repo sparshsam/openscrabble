@@ -1,10 +1,12 @@
 import type { GameState, PlacedTile, Tile, WordResult } from '../types.js';
 import { Game } from '../game/Game.js';
+import { GamePersistence } from '../game/Persistence.js';
 import { getPremiumType } from '../game/Board.js';
 
 /**
  * GameUI — renders the full game screen with live feedback,
  * tile scores, validation preview, and mobile-first layout.
+ * Automatically saves state to localStorage after every action.
  */
 export class GameUI {
   private game: Game;
@@ -15,14 +17,21 @@ export class GameUI {
   private dragOffsetY = 0;
   private dragClone: HTMLElement | null = null;
   private swapSelection: Set<string> = new Set();
-  private lastSubmitScore: number | null = null;
   private onBackToHome: (() => void) | null = null;
 
-  constructor(root: HTMLElement, player1Name?: string, player2Name?: string, onBackToHome?: () => void) {
+  constructor(
+    root: HTMLElement,
+    game?: Game,
+    onBackToHome?: () => void
+  ) {
     this.root = root;
-    this.game = new Game(player1Name, player2Name);
+    this.game = game ?? new Game();
     this.onBackToHome = onBackToHome ?? null;
     this.render();
+  }
+
+  private save(): void {
+    GamePersistence.save(this.game);
   }
 
   private render(): void {
@@ -63,23 +72,29 @@ export class GameUI {
       </div>`;
 
     header.querySelector('[data-action="reset"]')?.addEventListener('click', () => {
-      if (confirm('Start a new game?')) {
-        this.game = new Game(
-          this.game.players[0]!.name,
-          this.game.players[1]!.name
-        );
-        this.lastSubmitScore = null;
-        this.render();
-      }
+      this.onReset();
     });
 
     header.querySelector('[data-action="home"]')?.addEventListener('click', () => {
-      if (confirm('Return to home? The current game will be lost.')) {
+      if (confirm('Return to home? The current game will be saved.')) {
+        this.save();
         this.onBackToHome?.();
       }
     });
 
     return header;
+  }
+
+  private onReset(): void {
+    if (confirm('Start a new game? Your current game will be lost.')) {
+      GamePersistence.clear();
+      this.game = new Game(
+        this.game.players[0]!.name,
+        this.game.players[1]!.name
+      );
+      this.selectedTileId = null;
+      this.render();
+    }
   }
 
   // ─── Score Display ───────────────────────────────────
@@ -100,7 +115,6 @@ export class GameUI {
       scoreDiv.appendChild(pDiv);
     }
 
-    // Bag count
     const bagInfo = document.createElement('div');
     bagInfo.className = 'bag-count';
     bagInfo.textContent = `Bag: ${state.bag.length}`;
@@ -149,13 +163,13 @@ export class GameUI {
     const isPending = pendingSet.has(`${row},${col}`);
     const premium = getPremiumType(row, col);
 
-    // Center star — show on center if no tile
+    // Center star
     if (row === 7 && col === 7 && !tile) {
       cell.classList.add('center-star');
       cell.textContent = '★';
     }
 
-    // Premium square styling (only show when no tile placed)
+    // Premium square
     if (premium && !tile && !(row === 7 && col === 7)) {
       cell.classList.add(`premium-${premium}`);
       cell.dataset.premium = premium;
@@ -167,7 +181,6 @@ export class GameUI {
       cell.classList.add('has-tile');
       if (isPending) {
         cell.classList.add('pending');
-        // Glow effect based on preview validity
         if (preview) {
           cell.classList.add(preview.valid ? 'pending-valid' : 'pending-invalid');
         }
@@ -176,29 +189,27 @@ export class GameUI {
       cell.textContent = tile.playedAs ?? tile.letter;
 
       // Point badge
-      if (tile.points > 0) {
-        const badge = document.createElement('span');
-        badge.className = 'tile-points';
-        badge.textContent = String(tile.points);
-        cell.appendChild(badge);
-      }
+      const badge = document.createElement('span');
+      badge.className = 'tile-points';
+      badge.textContent = String(tile.points);
+      cell.appendChild(badge);
     }
 
     // Click events
     cell.addEventListener('click', () => {
       if (this.game.phase !== 'placing') return;
 
-      // Click pending tile → remove it
       if (isPending) {
         this.game.removeTile(row, col);
+        this.save();
         this.render();
         return;
       }
 
-      // Placed tile from selection → place it
       if (this.selectedTileId && !tile) {
         this.game.placeTile(this.selectedTileId, row, col);
         this.selectedTileId = null;
+        this.save();
         this.render();
       }
     });
@@ -223,6 +234,7 @@ export class GameUI {
       } else {
         this.game.placeTile(tileId, row, col);
       }
+      this.save();
       this.render();
     });
 
@@ -257,6 +269,7 @@ export class GameUI {
       this.dragClone?.remove();
       this.dragClone = null;
       this.dragTileId = null;
+      this.save();
       this.render();
     });
   }
@@ -279,7 +292,7 @@ export class GameUI {
       bar.classList.add('preview-valid');
       const wordStr = preview.words.map((w) => `"${w.word}"`).join(', ');
       const pendingCount = this.game.getPendingTiles().length;
-      const bingoNote = pendingCount >= 7 ? ' (+50 bingo!)' : '';
+      const bingoNote = pendingCount >= 7 ? ' 🎉 Bingo!' : '';
       bar.textContent = `${wordStr} → ${preview.totalScore} pts${bingoNote}`;
     } else {
       bar.classList.add('preview-invalid');
@@ -296,6 +309,8 @@ export class GameUI {
     rackContainer.className = 'rack-container';
 
     const player = state.players[state.currentPlayerIndex]!;
+    const pendingTileIds = new Set(this.game.getPendingTiles().map((t) => t.id));
+
     const label = document.createElement('div');
     label.className = 'rack-label';
     label.textContent = `${player.name}'s Rack`;
@@ -310,18 +325,17 @@ export class GameUI {
       const tile = player.rack[i];
 
       if (tile) {
+        const isOnBoard = pendingTileIds.has(tile.id);
         slot.classList.add('has-tile');
 
         if (state.swapMode) {
           const isSelected = this.swapSelection.has(tile.id);
           slot.classList.toggle('selected', isSelected);
           slot.textContent = tile.letter || '?';
-          if (tile.points > 0) {
-            const badge = document.createElement('span');
-            badge.className = 'tile-points';
-            badge.textContent = String(tile.points);
-            slot.appendChild(badge);
-          }
+          const badge = document.createElement('span');
+          badge.className = 'tile-points';
+          badge.textContent = String(tile.points);
+          slot.appendChild(badge);
           slot.addEventListener('click', () => {
             if (this.swapSelection.has(tile.id)) {
               this.swapSelection.delete(tile.id);
@@ -330,6 +344,11 @@ export class GameUI {
             }
             this.render();
           });
+        } else if (isOnBoard) {
+          // Tile is on the board — show as dimmed/empty slot
+          slot.classList.remove('has-tile');
+          slot.classList.add('empty', 'on-board');
+          slot.textContent = '';
         } else {
           slot.textContent = tile.letter || '?';
           if (tile.points > 0) {
@@ -351,6 +370,7 @@ export class GameUI {
             const pending = this.game.getPendingTiles().find((t) => t.id === tile.id);
             if (pending) {
               this.game.removeTile(pending.row, pending.col);
+              this.save();
               this.selectedTileId = null;
               this.render();
               return;
@@ -411,6 +431,7 @@ export class GameUI {
       swapBtn.addEventListener('click', () => {
         this.game.swapTiles([...this.swapSelection]);
         this.swapSelection.clear();
+        this.save();
         this.render();
       });
       actions.appendChild(swapBtn);
@@ -434,12 +455,12 @@ export class GameUI {
       submitBtn.addEventListener('click', () => {
         const result = this.game.submitWord();
         if (result.success) {
-          this.lastSubmitScore = result.totalScore;
           this.showMessage(result);
         } else {
           this.showMessage(result);
         }
         this.selectedTileId = null;
+        this.save();
         this.render();
       });
       actions.appendChild(submitBtn);
@@ -451,6 +472,7 @@ export class GameUI {
       clearBtn.addEventListener('click', () => {
         this.game.clearPending();
         this.selectedTileId = null;
+        this.save();
         this.render();
       });
       actions.appendChild(clearBtn);
@@ -461,6 +483,7 @@ export class GameUI {
       passBtn.addEventListener('click', () => {
         this.game.passTurn();
         this.selectedTileId = null;
+        this.save();
         this.render();
       });
       actions.appendChild(passBtn);
@@ -489,11 +512,11 @@ export class GameUI {
       newGameBtn.className = 'btn btn-primary';
       newGameBtn.textContent = 'New Game';
       newGameBtn.addEventListener('click', () => {
+        GamePersistence.clear();
         this.game = new Game(
           this.game.players[0]!.name,
           this.game.players[1]!.name
         );
-        this.lastSubmitScore = null;
         this.render();
       });
       actions.appendChild(newGameBtn);
@@ -501,14 +524,17 @@ export class GameUI {
       const homeBtn = document.createElement('button');
       homeBtn.className = 'btn';
       homeBtn.textContent = 'Home';
-      homeBtn.addEventListener('click', () => this.onBackToHome?.());
+      homeBtn.addEventListener('click', () => {
+        GamePersistence.clear();
+        this.onBackToHome?.();
+      });
       actions.appendChild(homeBtn);
     }
 
     return actions;
   }
 
-  // ─── Message & Score Toast ───────────────────────────
+  // ─── Message ─────────────────────────────────────────
 
   private createMessageArea(): HTMLElement {
     const msg = document.createElement('div');
@@ -523,13 +549,7 @@ export class GameUI {
 
     if (result.success) {
       const wordsText = result.words.map((w) => `"${w.word}"`).join(', ');
-      const pendingCount = this.game.getPendingTiles().length;
-      // Actually pending tiles are cleared after submit, so use totalTiles placed
-      const words = result.words;
-      let totalPlaced = 0;
-      for (const w of words) totalPlaced += w.tiles.length;
-      // Better: just use totalScore minus words' raw sum... let's keep it simple
-      const bingoNote = result.totalScore >= 57 ? ' 🎉 Bingo!' : ''; // rough heuristic
+      const bingoNote = result.totalScore >= 57 ? ' 🎉 Bingo!' : '';
       msgEl.textContent = `${wordsText} → +${result.totalScore} pts${bingoNote}`;
       msgEl.className = 'message-area success';
     } else {

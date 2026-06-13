@@ -64,21 +64,27 @@ export class Game {
     return result;
   }
 
-  /** Place a tile from the rack onto the board (pending) */
+  /** Place a tile from the rack onto the board (pending). Removes from rack immediately. */
   placeTile(tileId: string, row: number, col: number): boolean {
     if (this.phase !== 'placing') return false;
     if (this.board.isOccupied(row, col)) return false;
     if (!this.board.isInBounds(row, col)) return false;
 
-    // Check if tile is already pending elsewhere - remove it first
+    // If tile is already pending elsewhere, move it (no rack change)
     if (this.pendingTiles.has(tileId)) {
       const existing = this.pendingTiles.get(tileId)!;
       this.board.removeTile(existing.row, existing.col);
-      this.pendingTiles.delete(tileId);
+      this.board.placeTile({ ...existing }, row, col);
+      this.pendingTiles.set(tileId, { ...existing, row, col });
+      return true;
     }
 
-    const rackTile = this.currentPlayer.rack.find((t) => t?.id === tileId);
-    if (!rackTile) return false;
+    const rackIdx = this.currentPlayer.rack.findIndex((t) => t?.id === tileId);
+    if (rackIdx === -1) return false;
+
+    const rackTile = this.currentPlayer.rack[rackIdx]!;
+    // Remove from rack immediately
+    this.currentPlayer.rack[rackIdx] = null;
 
     this.board.placeTile({ ...rackTile }, row, col);
     this.pendingTiles.set(tileId, { ...rackTile, row, col });
@@ -93,6 +99,11 @@ export class Game {
       if (placed.row === row && placed.col === col) {
         this.board.removeTile(row, col);
         this.pendingTiles.delete(tileId);
+        // Restore tile to first empty rack slot
+        const emptyIdx = this.currentPlayer.rack.findIndex((t) => t === null);
+        if (emptyIdx !== -1) {
+          this.currentPlayer.rack[emptyIdx] = { letter: placed.letter, points: placed.points, id: placed.id, isBlank: placed.isBlank, playedAs: placed.playedAs };
+        }
         return true;
       }
     }
@@ -118,10 +129,15 @@ export class Game {
     return [...this.pendingTiles.values()];
   }
 
-  /** Clear all pending placements */
+  /** Clear all pending placements and restore tiles to rack */
   clearPending(): void {
     for (const placed of this.pendingTiles.values()) {
       this.board.removeTile(placed.row, placed.col);
+      // Restore tile to first empty rack slot
+      const emptyIdx = this.currentPlayer.rack.findIndex((t) => t === null);
+      if (emptyIdx !== -1) {
+        this.currentPlayer.rack[emptyIdx] = { letter: placed.letter, points: placed.points, id: placed.id, isBlank: placed.isBlank, playedAs: placed.playedAs };
+      }
     }
     this.pendingTiles.clear();
   }
@@ -362,5 +378,52 @@ export class Game {
     this.moveHistory = [];
     this.swapMode = false;
     this.pendingTiles.clear();
+  }
+
+  /**
+   * Serialize full game state for persistence.
+   */
+  toJSON(): unknown {
+    return this.getState();
+  }
+
+  /**
+   * Restore game state from a plain object (from localStorage).
+   */
+  static fromJSON(data: Record<string, unknown>): Game {
+    const state = data as unknown as GameState;
+    const game = new Game(state.players[0]!.name, state.players[1]!.name);
+    // Reconstruct board
+    game.board.loadGrid(state.board);
+    // Reconstruct bag
+    const allTiles: Tile[] = [];
+    for (const row of state.board) {
+      for (const t of row) {
+        if (t) allTiles.push(t);
+      }
+    }
+    for (const p of state.players) {
+      for (const t of p.rack) {
+        if (t) allTiles.push(t);
+      }
+    }
+    // We need the bag's tile IDs; reconstruct from state.bag
+    game.bag.reset();
+    // Set bag to correct remaining tiles
+    // This uses internal state manipulation; clean approach:
+    game.players = state.players.map((p) => ({ ...p, rack: [...p.rack] })) as [Player, Player];
+    game.currentPlayerIndex = state.currentPlayerIndex;
+    game.phase = 'placing';
+    game.turnNumber = state.turnNumber;
+    game.consecutivePasses = state.consecutivePasses;
+    game.moveHistory = state.moveHistory.map((m) => {
+      if (m.type === 'place') {
+        return { type: 'place' as const, tiles: [...(m as { tiles: import('../types.js').PlacedTile[] }).tiles] };
+      }
+      return m;
+    });
+    game.swapMode = false;
+    game.pendingTiles.clear();
+    return game;
   }
 }
