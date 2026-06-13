@@ -171,7 +171,7 @@ export class Game {
     const words = this.board.findWords(pending);
 
     if (words.length === 0) {
-      this.clearPending();
+      // Return error but DO NOT clear pending — player needs to see what's wrong
       return { success: false, words: [], totalScore: 0, error: 'No words formed' };
     }
 
@@ -179,7 +179,7 @@ export class Game {
     const wordStrings = words.map((w) => w.word);
     const invalidWords = WordValidator.findInvalid(wordStrings);
     if (invalidWords.length > 0) {
-      this.clearPending();
+      // Return error but DO NOT clear pending — player needs to see red feedback
       const badWord = invalidWords[0]!;
       return { success: false, words: [], totalScore: 0, error: `"${badWord.word}" is not a valid word` };
     }

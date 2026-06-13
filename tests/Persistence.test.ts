@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Game } from '../src/game/Game.js';
 import { GamePersistence } from '../src/game/Persistence.js';
+import { WordValidator } from '../src/game/WordValidator.js';
 import { resetTileCounter } from '../src/data/tileDistribution.js';
 
 // Mock localStorage for Node test environment
@@ -131,7 +132,7 @@ describe('Rack behavior', () => {
     expect(game.players[0]!.rack.filter((t) => t !== null).length).toBe(7);
   });
 
-  it('submitWord validates against dictionary', () => {
+  it('submitWord rejects invalid words and keeps tiles on board', () => {
     const game = new Game('P1', 'P2');
     const rack = game.players[0]!.rack.filter((t) => t !== null);
     const tile = rack[0]!;
@@ -147,13 +148,60 @@ describe('Rack behavior', () => {
     expect(result.success).toBe(preview.valid);
 
     if (!result.success) {
-      // Tiles restored to rack on failure
-      expect(game.players[0]!.rack.filter((t) => t !== null).length).toBe(7);
+      // Tiles stay on board — NOT cleared on validation failure
+      expect(game.getPendingTiles().length).toBe(2);
+      expect(game.board.getTile(7, 7)).not.toBeNull();
+      expect(game.board.getTile(7, 8)).not.toBeNull();
+      // Rack is NOT refilled — tiles remain on board
+      expect(game.players[0]!.rack.filter((t) => t !== null).length).toBe(5);
+      // Turn did NOT switch
       expect(game.currentPlayerIndex).toBe(0);
     } else {
       // Tiles drawn and turn switched on success
+      expect(game.getPendingTiles().length).toBe(0);
       expect(game.players[0]!.rack.filter((t) => t !== null).length).toBe(7);
       expect(game.currentPlayerIndex).toBe(1);
+    }
+  });
+
+  it('submitWord rejects placement violations and keeps tiles on board', () => {
+    const game = new Game('P1', 'P2');
+    const rack = game.players[0]!.rack.filter((t) => t !== null);
+    const tile = rack[0]!;
+
+    // Place tile NOT covering center — invalid placement
+    game.placeTile(tile.id, 0, 0);
+    expect(game.getPendingTiles().length).toBe(1);
+
+    const result = game.submitWord();
+    expect(result.success).toBe(false);
+    // Tile stays on board despite invalid placement
+    expect(game.getPendingTiles().length).toBe(1);
+    expect(game.board.getTile(0, 0)).not.toBeNull();
+    expect(game.currentPlayerIndex).toBe(0);
+  });
+
+  it('invalid words remain on board for the player to fix', () => {
+    const game = new Game('P1', 'P2');
+    const rack = game.players[0]!.rack.filter((t) => t !== null);
+    const tile = rack[0]!;
+    const tile2 = rack[1]!;
+
+    game.placeTile(tile.id, 7, 7);
+    game.placeTile(tile2.id, 7, 8);
+
+    const preview = game.previewMove();
+    expect(preview.valid).toBe(WordValidator.allValid(preview.words.map(w => w.word)));
+
+    // Submit doesn't clear tiles
+    const result = game.submitWord();
+    if (!result.success) {
+      // Player can still see and fix the tiles
+      expect(game.getPendingTiles().length).toBeGreaterThan(0);
+      // Player can clear them manually
+      game.clearPending();
+      expect(game.getPendingTiles().length).toBe(0);
+      expect(game.players[0]!.rack.filter((t) => t !== null).length).toBe(7);
     }
   });
 

@@ -458,11 +458,14 @@ export class GameUI {
       actions.appendChild(cancelBtn);
     } else if (state.phase === 'placing') {
       const pendingCount = this.game.getPendingTiles().length;
+      const preview = pendingCount > 0 ? this.game.previewMove() : null;
+      const isMoveInvalid = preview !== null && !preview.valid;
 
       const submitBtn = document.createElement('button');
       submitBtn.className = 'btn btn-primary';
-      submitBtn.textContent = 'Submit Word';
-      submitBtn.disabled = pendingCount === 0;
+      submitBtn.textContent = isMoveInvalid ? 'Word Not Valid' : 'Submit Word';
+      submitBtn.disabled = pendingCount === 0 || isMoveInvalid;
+      submitBtn.title = isMoveInvalid ? (preview?.error ?? 'Fix the word before submitting') : '';
       submitBtn.addEventListener('click', () => {
         const result = this.game.submitWord();
         if (result.success) {
