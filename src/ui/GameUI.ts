@@ -184,6 +184,10 @@ export class GameUI {
         if (preview) {
           cell.classList.add(preview.valid ? 'pending-valid' : 'pending-invalid');
         }
+        // Highlight the selected pending tile
+        if (this.selectedTileId === tile.id) {
+          cell.classList.add('selected');
+        }
       }
       cell.dataset.tileId = tile.id;
       cell.textContent = tile.playedAs ?? tile.letter;
@@ -195,12 +199,19 @@ export class GameUI {
       cell.appendChild(badge);
     }
 
-    // Click events
+    // Click events — tap-to-place and tap-to-move
     cell.addEventListener('click', () => {
       if (this.game.phase !== 'placing') return;
 
       if (isPending) {
-        this.game.removeTile(row, col);
+        // Tapping a pending tile: if it's already selected, remove it back to rack
+        // Otherwise, select it so next tap moves it
+        if (this.selectedTileId === tile?.id) {
+          this.game.removeTile(row, col);
+          this.selectedTileId = null;
+        } else {
+          this.selectedTileId = tile?.id ?? null;
+        }
         this.save();
         this.render();
         return;

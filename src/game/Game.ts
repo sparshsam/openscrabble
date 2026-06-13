@@ -2,6 +2,7 @@ import type { Tile, PlacedTile, Player, GameState, GamePhase, TurnAction, WordRe
 import { Board, CENTER, getPremiumType } from './Board.js';
 import { Bag } from './Bag.js';
 import { ScoreCalculator } from './ScoreCalculator.js';
+import { WordValidator } from './WordValidator.js';
 
 const RACK_SIZE = 7;
 
@@ -171,7 +172,16 @@ export class Game {
 
     if (words.length === 0) {
       this.clearPending();
-      return { success: false, words: [], totalScore: 0, error: 'No valid words formed' };
+      return { success: false, words: [], totalScore: 0, error: 'No words formed' };
+    }
+
+    // Dictionary validation: reject the move if any word is invalid
+    const wordStrings = words.map((w) => w.word);
+    const invalidWords = WordValidator.findInvalid(wordStrings);
+    if (invalidWords.length > 0) {
+      this.clearPending();
+      const badWord = invalidWords[0]!;
+      return { success: false, words: [], totalScore: 0, error: `"${badWord.word}" is not a valid word` };
     }
 
     // Calculate score
@@ -304,6 +314,7 @@ export class Game {
   /**
    * Preview the current pending placement without committing.
    * Returns validation result, formed words, and score estimate.
+   * Checks placement rules AND dictionary validity.
    */
   previewMove(): { valid: boolean; words: WordResult[]; totalScore: number; error?: string } {
     const pending = this.getPendingTiles();
@@ -326,6 +337,14 @@ export class Game {
     const words = this.board.findWords(pending);
     if (words.length === 0) {
       return { valid: false, words: [], totalScore: 0, error: 'No words formed' };
+    }
+
+    // Dictionary validation: check every formed word
+    const wordStrings = words.map((w) => w.word);
+    const invalid = WordValidator.findInvalid(wordStrings);
+    if (invalid.length > 0) {
+      const badWord = invalid[0]!;
+      return { valid: false, words: [], totalScore: 0, error: `"${badWord.word}" is not a valid word` };
     }
 
     const totalScore = ScoreCalculator.calculate(

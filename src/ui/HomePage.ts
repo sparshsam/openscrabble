@@ -216,7 +216,7 @@ export class HomePage {
   private createFooter(): HTMLElement {
     const footer = document.createElement('div');
     footer.className = 'home-footer';
-    footer.innerHTML = 'v0.1.2 — <a href="https://github.com/sparshsam/openscrabble" target="_blank" rel="noopener">GitHub</a>';
+    footer.innerHTML = 'v0.1.3 — <a href="https://github.com/sparshsam/openscrabble" target="_blank" rel="noopener">GitHub</a>';
     return footer;
   }
 }
