@@ -147,7 +147,6 @@ export class GameUI {
 
     const boardEl = document.createElement('div');
     boardEl.className = 'board';
-    boardEl.addEventListener('pointermove', this.onBoardPointerMove);
 
     // Prevent board scrolling while dragging
     boardEl.addEventListener('touchstart', (e) => {
@@ -258,30 +257,6 @@ export class GameUI {
     return cell;
   }
 
-  // Board-level pointer move handler (attached once, not per cell)
-  private onBoardPointerMove = (e: PointerEvent): void => {
-    if (!this.drag?.isDragging || !this.drag.clone) return;
-
-    // Update clone position
-    this.drag.clone.style.left = `${e.clientX - 20}px`;
-    this.drag.clone.style.top = `${e.clientY - 20}px`;
-
-    // Find cell under pointer
-    const el = document.elementFromPoint(e.clientX, e.clientY);
-    const cell = el?.closest('.cell') as HTMLElement;
-
-    if (cell !== this.drag.currentTarget) {
-      // Remove old highlight
-      if (this.drag.currentTarget) {
-        this.drag.currentTarget.classList.remove('drag-over');
-      }
-      this.drag.currentTarget = cell;
-      if (cell) {
-        cell.classList.add('drag-over');
-      }
-    }
-  };
-
   // ─── Rack ────────────────────────────────────────────
 
   private createRack(state: GameState): HTMLElement {
@@ -381,11 +356,6 @@ export class GameUI {
 
     rackContainer.appendChild(rack);
 
-    // Pointer up on rack container = drop to return pending tile
-    rackContainer.addEventListener('pointerup', (e) => {
-      this.onGlobalPointerUp(e);
-    });
-
     return rackContainer;
   }
 
@@ -417,64 +387,70 @@ export class GameUI {
       suppressClick: false,
     };
 
+    // Immediately create the clone so it follows the finger with no delay
+    this.dragCloneAt(e.clientX, e.clientY);
+
+    // Prevent page scrolling on mobile immediately
+    document.body.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
+
     // Add document-level listeners for move/up
     document.addEventListener('pointermove', this.onGlobalPointerMove);
     document.addEventListener('pointerup', this.onGlobalPointerUp);
   }
 
+  /** Create (or reposition) the drag clone centered on (x, y). */
+  private dragCloneAt(clientX: number, clientY: number): void {
+    if (!this.drag) return;
+
+    // Find the source tile element under the start point
+    const sourceEl = document.elementFromPoint(clientX, clientY);
+    const tileEl = sourceEl?.closest('.has-tile') as HTMLElement;
+    if (!tileEl) return;
+
+    if (!this.drag.clone) {
+      // First creation — build the clone
+      const clone = tileEl.cloneNode(true) as HTMLElement;
+      clone.className = 'tile-drag-clone';
+      const size = Math.max(tileEl.offsetWidth || 36, 40);
+      clone.style.width = `${size}px`;
+      clone.style.height = `${size}px`;
+      // Use a fixed letter size so it's readable on mobile
+      clone.style.fontSize = 'clamp(1rem, 4vw, 1.4rem)';
+      document.body.appendChild(clone);
+      this.drag.clone = clone;
+
+      // Mark source as held
+      tileEl.classList.add('tile-held');
+    }
+
+    // Position clone: left/top at clientX/clientY; CSS translate(-50%,-50%) centers it
+    if (this.drag.clone) {
+      this.drag.clone.style.left = `${clientX}px`;
+      this.drag.clone.style.top = `${clientY}px`;
+    }
+
+    this.drag.isDragging = true;
+  };
+
+  /** Handle pointer move during a drag. */
   private onGlobalPointerMove = (e: PointerEvent): void => {
     if (!this.drag) return;
 
-    const dist = Math.hypot(e.clientX - this.drag.startX, e.clientY - this.drag.startY);
+    // Reposition the clone to follow the finger
+    this.dragCloneAt(e.clientX, e.clientY);
 
-    if (!this.drag.isDragging && dist > 6) {
-      // Threshold crossed — start actual drag
-      this.drag.isDragging = true;
+    // Highlight drop target
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const cell = el?.closest('.cell') as HTMLElement;
 
-      // Prevent page scrolling on mobile
-      document.body.style.overflow = 'hidden';
-      document.body.style.touchAction = 'none';
-
-      // Create drag clone
-      const sourceEl = document.elementFromPoint(this.drag.startX, this.drag.startY);
-      const tileEl = sourceEl?.closest('.has-tile') as HTMLElement;
-      if (tileEl) {
-        const clone = tileEl.cloneNode(true) as HTMLElement;
-        clone.className = 'tile-drag-clone';
-        clone.style.position = 'fixed';
-        clone.style.left = `${e.clientX - 20}px`;
-        clone.style.top = `${e.clientY - 20}px`;
-        clone.style.width = `${tileEl.offsetWidth}px`;
-        clone.style.height = `${tileEl.offsetHeight}px`;
-        clone.style.zIndex = '1000';
-        clone.style.pointerEvents = 'none';
-        document.body.appendChild(clone);
-        this.drag.clone = clone;
+    if (cell !== this.drag.currentTarget) {
+      if (this.drag.currentTarget) {
+        this.drag.currentTarget.classList.remove('drag-over');
       }
-
-      // Add held class to source for visual feedback
-      if (tileEl) {
-        tileEl.classList.add('tile-held');
-      }
-    }
-
-    // Update clone position
-    if (this.drag.isDragging && this.drag.clone) {
-      this.drag.clone.style.left = `${e.clientX - 20}px`;
-      this.drag.clone.style.top = `${e.clientY - 20}px`;
-
-      // Highlight drop target
-      const el = document.elementFromPoint(e.clientX, e.clientY);
-      const cell = el?.closest('.cell') as HTMLElement;
-
-      if (cell !== this.drag.currentTarget) {
-        if (this.drag.currentTarget) {
-          this.drag.currentTarget.classList.remove('drag-over');
-        }
-        this.drag.currentTarget = cell;
-        if (cell) {
-          cell.classList.add('drag-over');
-        }
+      this.drag.currentTarget = cell;
+      if (cell) {
+        cell.classList.add('drag-over');
       }
     }
   };

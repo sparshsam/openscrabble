@@ -1,4 +1,4 @@
-/* OpenScrabble v0.1.3 — Truly centered, dictionary-validated, movable tiles */
+/* OpenScrabble v0.1.7 — Mobile layout + drag hotfix */
 
 *, *::before, *::after {
   box-sizing: border-box;
@@ -9,7 +9,8 @@
 :root {
   --board-bg: #f5f0e8;
   --board-border: #d4c9a8;
-  --cell-size: clamp(28px, (100vw - 40px) / 15, 44px);
+  /* Cell size snaps to fit: ~390px / 15 ≈ 26px comfortably inside viewport */
+  --cell-size: clamp(24px, calc((100dvw - 32px) / 15), 44px);
   --tw-color: #c0392b;
   --dw-color: #d68933;
   --tl-color: #2980b9;
@@ -29,12 +30,16 @@
   --radius: 6px;
   --valid-color: #2d7a3a;
   --invalid-color: #b32d2d;
+  /* Safe-area-aware horizontal padding */
+  --safe-gap: max(env(safe-area-inset-left, 0px), 8px);
 }
 
 html {
   font-size: 16px;
   -webkit-text-size-adjust: 100%;
   overflow-x: hidden;
+  overflow-y: auto;
+  height: 100%;
 }
 
 body {
@@ -43,7 +48,8 @@ body {
   color: var(--text);
   line-height: 1.4;
   margin: 0;
-  padding: 8px;
+  padding: 8px max(var(--safe-gap), 8px);
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 8px);
   min-height: 100dvh;
   overflow-x: hidden;
   overflow-y: auto;
@@ -126,9 +132,11 @@ body {
 
 #app {
   width: 100%;
+  max-width: calc(var(--cell-size) * 15 + 4px); /* board + border */
   display: flex;
   flex-direction: column;
   align-items: center;
+  margin: 0 auto;
 }
 
 .game-container {
@@ -168,10 +176,15 @@ body {
 .bag-count { font-size: 0.62rem; color: var(--text-light); padding: 5px 7px; background: #f0ebe0; border-radius: var(--radius); white-space: nowrap; }
 
 /* ══════════════════════════════════════════════════════
-   GAME: BOARD
+   GAME: BOARD — truly centered, no horizontal clip
    ══════════════════════════════════════════════════════ */
 
-.board-container { display: flex; justify-content: center; width: 100%; }
+.board-container {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  overflow: hidden;
+}
 
 .board {
   display: grid;
@@ -196,8 +209,6 @@ body {
   cursor: pointer;
   transition: background 0.12s, box-shadow 0.12s;
 }
-
-.cell:active { transform: scale(0.93); }
 
 .cell.premium-tw { background: var(--tw-color); color: white; font-size: clamp(0.35rem, 0.85vw, 0.55rem); }
 .cell.premium-dw { background: var(--dw-color); color: white; font-size: clamp(0.35rem, 0.85vw, 0.55rem); }
@@ -247,27 +258,35 @@ body {
   z-index: 2;
 }
 
-.cell.drag-over { background: rgba(91, 127, 94, 0.25); }
+/* Drop target highlight — brighter and more visible */
+.cell.drag-over {
+  background: rgba(91, 127, 94, 0.35);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
 
 /* Tile being dragged — visual state on source */
 .tile-held {
-  opacity: 0.25;
-  transform: scale(0.85);
-  transition: opacity 0.1s, transform 0.1s;
+  opacity: 0.2;
+  transform: scale(0.8);
+  transition: opacity 0.08s, transform 0.08s;
 }
 
+/* Drag clone — larger + closer to finger for better mobile feel */
 .tile-drag-clone {
-  background: var(--tile-bg);
-  border: 2px solid var(--accent);
-  border-radius: 4px;
+  position: fixed;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 1.05rem;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.25);
-  transform: scale(1.08);
+  border-radius: 4px;
+  background: var(--tile-bg);
+  border: 2px solid var(--accent);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+  pointer-events: none;
+  z-index: 1000;
+  transform: scale(1.25) translate(-50%, -50%);
   transition: none;
+  font-size: clamp(1rem, 4vw, 1.4rem);
 }
 
 /* ══════════════════════════════════════════════════════
@@ -294,10 +313,13 @@ body {
 .preview-invalid { color: #a02626; background: #fce8e8; border: 1.5px solid #e8a0a0; }
 
 /* ══════════════════════════════════════════════════════
-   GAME: RACK
+   GAME: RACK — safe-area-inset bottom
    ══════════════════════════════════════════════════════ */
 
-.rack-container { width: 100%; }
+.rack-container {
+  width: 100%;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
 .rack-label { font-size: 0.68rem; font-weight: 600; color: var(--text-light); margin-bottom: 3px; padding-left: 2px; }
 
 .tile-rack {
@@ -344,7 +366,6 @@ body {
   line-height: 1;
 }
 
-.rack-slot.has-tile:active { transform: scale(0.88); }
 .rack-slot.has-tile.selected { border-color: var(--accent); background: var(--accent-light); transform: translateY(-5px); }
 .rack-slot.empty { border: 1px dashed rgba(0,0,0,0.1); background: transparent; }
 .rack-slot.on-board { border: 1px dashed rgba(0,0,0,0.08); background: rgba(0,0,0,0.03); opacity: 0.4; }
@@ -372,7 +393,6 @@ body {
   line-height: 1;
 }
 
-.btn:active { transform: scale(0.95); }
 .btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
 .btn-primary { background: var(--accent); color: white; border-color: var(--accent); }
 .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
@@ -399,6 +419,7 @@ body {
   .cell.has-tile:hover { background: #f0e8d0; }
   .btn:hover:not(:disabled) { opacity: 0.92; }
   .rack-slot.has-tile:hover { transform: translateY(-2px); }
+  .tile-drag-clone { transform: scale(1.15) translate(-50%, -50%); }
 }
 
 @media (min-width: 1024px) {
