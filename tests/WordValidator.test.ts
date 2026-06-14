@@ -69,4 +69,52 @@ describe('WordValidator', () => {
       expect(WordValidator.isValid(w)).toBe(true);
     }
   });
+
+  // ─── 2-Letter Word Validation ──────────────
+
+  it('accepts all official Scrabble 2-letter words', () => {
+    const officialTwoLetter = [
+      'aa','ab','ad','ae','ag','ah','ai','al','am','an','ar','as','at','aw','ax','ay',
+      'ba','be','bi','bo','by',
+      'ch',
+      'da','de','do',
+      'ed','ef','eh','el','em','en','er','es','et','ex',
+      'fa','fe',
+      'gi','go',
+      'ha','he','hi','hm','ho',
+      'id','if','in','is','it',
+      'jo',
+      'ka','ki',
+      'la','li','lo',
+      'ma','me','mi','mm','mo','mu','my',
+      'na','ne','no','nu',
+      'od','oe','of','oh','oi','om','on','op','or','os','ow','ox','oy',
+      'pa','pe','pi','po',
+      'qi',
+      're',
+      'sh','si','so',
+      'ta','te','ti','to',
+      'uh','um','un','up','us','ut',
+      'we','wo',
+      'xi','xu',
+      'ya','ye','yo',
+      'za',
+    ];
+    for (const w of officialTwoLetter) {
+      expect(WordValidator.isValid(w)).toBe(true);
+    }
+  });
+
+  it('rejects invalid 2-letter combinations', () => {
+    const invalidTwoLetter = [
+      'zx','qw','jx','qz','qy','zv','zj','jq','vq','wq',
+      'wz','xq','xz','xk','zq','bb','bd','bf','bg','bh',
+      'bj','bk','bm','bn','bp','bq','bt','bv','bw','bx',
+      'xx','yy','zz','zs','zn','zo','zb','zc','zd','zf',
+      'fs','gs','hs','js','ks','ls',
+    ];
+    for (const w of invalidTwoLetter) {
+      expect(WordValidator.isValid(w)).toBe(false);
+    }
+  });
 });

@@ -4,18 +4,33 @@ import { GamePersistence } from '../game/Persistence.js';
 import { getPremiumType } from '../game/Board.js';
 
 /**
+ * Pointer drag state — tracks an ongoing drag from rack or board cell.
+ */
+interface DragState {
+  tileId: string;
+  isDragging: boolean;
+  startX: number;
+  startY: number;
+  clone: HTMLElement | null;
+  source: 'rack' | 'board';
+  sourceRow: number;
+  sourceCol: number;
+  currentTarget: HTMLElement | null;
+  suppressClick: boolean;
+}
+
+/**
  * GameUI — renders the full game screen with live feedback,
  * tile scores, validation preview, and mobile-first layout.
+ * Uses unified Pointer Events for all tile interaction (mouse, touch, pen).
+ * Tap-to-select/place retained as fallback.
  * Automatically saves state to localStorage after every action.
  */
 export class GameUI {
   private game: Game;
   private root: HTMLElement;
   private selectedTileId: string | null = null;
-  private dragTileId: string | null = null;
-  private dragOffsetX = 0;
-  private dragOffsetY = 0;
-  private dragClone: HTMLElement | null = null;
+  private drag: DragState | null = null;
   private swapSelection: Set<string> = new Set();
   private onBackToHome: (() => void) | null = null;
 
@@ -93,6 +108,7 @@ export class GameUI {
         this.game.players[1]!.name
       );
       this.selectedTileId = null;
+      this.clearDrag();
       this.render();
     }
   }
@@ -131,6 +147,12 @@ export class GameUI {
 
     const boardEl = document.createElement('div');
     boardEl.className = 'board';
+    boardEl.addEventListener('pointermove', this.onBoardPointerMove);
+
+    // Prevent board scrolling while dragging
+    boardEl.addEventListener('touchstart', (e) => {
+      if (this.drag?.isDragging) e.preventDefault();
+    }, { passive: false });
 
     const preview = this.game.getPendingTiles().length > 0 ? this.game.previewMove() : null;
     const pendingSet = new Set(
@@ -145,7 +167,6 @@ export class GameUI {
     }
 
     boardContainer.appendChild(boardEl);
-    this.setupBoardDragHandlers(boardEl);
 
     return boardContainer;
   }
@@ -199,13 +220,14 @@ export class GameUI {
       cell.appendChild(badge);
     }
 
-    // Click events — tap-to-place and tap-to-move
+    // ── Click (tap-to-place / tap-to-move) ──
     cell.addEventListener('click', () => {
-      if (this.game.phase !== 'placing') return;
+      if (!this.game || this.game.phase !== 'placing') return;
+      // If we just finished a drag on this cell, ignore the click
+      if (this.drag?.suppressClick) return;
 
       if (isPending) {
-        // Tapping a pending tile: if it's already selected, remove it back to rack
-        // Otherwise, select it so next tap moves it
+        // Tapping a pending tile: if selected, remove; otherwise select
         if (this.selectedTileId === tile?.id) {
           this.game.removeTile(row, col);
           this.selectedTileId = null;
@@ -225,93 +247,40 @@ export class GameUI {
       }
     });
 
-    // Drag events
-    cell.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      cell.classList.add('drag-over');
-    });
-    cell.addEventListener('dragleave', () => {
-      cell.classList.remove('drag-over');
-    });
-    cell.addEventListener('drop', (e) => {
-      e.preventDefault();
-      cell.classList.remove('drag-over');
-      const tileId = e.dataTransfer?.getData('text/plain') || this.dragTileId;
-      if (!tileId || this.game.phase !== 'placing') return;
-
-      const moving = this.game.getPendingTiles().find((t) => t.id === tileId);
-      if (moving) {
-        this.game.movePendingTile(tileId, row, col);
-      } else {
-        this.game.placeTile(tileId, row, col);
-      }
-      this.save();
-      this.render();
-    });
+    // ── Pointer down (drag start) for pending tiles ──
+    if (isPending) {
+      cell.addEventListener('pointerdown', (e) => {
+        if (this.game.phase !== 'placing' || !tile) return;
+        this.startDrag(tile.id, 'board', e, row, col);
+      });
+    }
 
     return cell;
   }
 
-  private setupBoardDragHandlers(boardEl: HTMLElement): void {
-    boardEl.addEventListener('touchmove', (e: Event) => {
-      const touch = (e as TouchEvent).touches[0];
-      if (!touch || !this.dragClone) return;
-      this.dragClone.style.left = `${touch.clientX - this.dragOffsetX}px`;
-      this.dragClone.style.top = `${touch.clientY - this.dragOffsetY}px`;
-    }, { passive: true });
+  // Board-level pointer move handler (attached once, not per cell)
+  private onBoardPointerMove = (e: PointerEvent): void => {
+    if (!this.drag?.isDragging || !this.drag.clone) return;
 
-    boardEl.addEventListener('touchend', (e: Event) => {
-      if (!this.dragTileId) return;
-      const touch = (e as TouchEvent).changedTouches[0];
-      if (!touch) return;
+    // Update clone position
+    this.drag.clone.style.left = `${e.clientX - 20}px`;
+    this.drag.clone.style.top = `${e.clientY - 20}px`;
 
-      const target = document.elementFromPoint(touch.clientX, touch.clientY);
-      const cell = target?.closest('.cell') as HTMLElement;
-      if (cell) {
-        const r = parseInt(cell.dataset.row!);
-        const c = parseInt(cell.dataset.col!);
-        if (this.game.getPendingTiles().find((t) => t.id === this.dragTileId)) {
-          this.game.movePendingTile(this.dragTileId, r, c);
-        } else {
-          this.game.placeTile(this.dragTileId, r, c);
-        }
+    // Find cell under pointer
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const cell = el?.closest('.cell') as HTMLElement;
+
+    if (cell !== this.drag.currentTarget) {
+      // Remove old highlight
+      if (this.drag.currentTarget) {
+        this.drag.currentTarget.classList.remove('drag-over');
       }
-
-      this.dragClone?.remove();
-      this.dragClone = null;
-      this.dragTileId = null;
-      this.save();
-      this.render();
-    });
-  }
-
-  // ─── Live Preview ────────────────────────────────────
-
-  private createLivePreview(
-    preview: { valid: boolean; words: WordResult[]; totalScore: number; error?: string } | null
-  ): HTMLElement {
-    const bar = document.createElement('div');
-    bar.className = 'preview-bar';
-
-    if (!preview) {
-      bar.classList.add('preview-empty');
-      bar.textContent = 'Place tiles to see word preview';
-      return bar;
+      this.drag.currentTarget = cell;
+      if (cell) {
+        cell.classList.add('drag-over');
+      }
     }
-
-    if (preview.valid) {
-      bar.classList.add('preview-valid');
-      const wordStr = preview.words.map((w) => `"${w.word}"`).join(', ');
-      const pendingCount = this.game.getPendingTiles().length;
-      const bingoNote = pendingCount >= 7 ? ' 🎉 Bingo!' : '';
-      bar.textContent = `${wordStr} → ${preview.totalScore} pts${bingoNote}`;
-    } else {
-      bar.classList.add('preview-invalid');
-      bar.innerHTML = `✕ ${this.esc(preview.error ?? 'Invalid move')}`;
-    }
-
-    return bar;
-  }
+  };
 
   // ─── Rack ────────────────────────────────────────────
 
@@ -371,8 +340,15 @@ export class GameUI {
           if (tile.letter === '') slot.classList.add('blank-tile');
           slot.dataset.tileId = tile.id;
 
+          // ── Click (tap to select) ──
           slot.addEventListener('click', () => {
             if (this.game.phase !== 'placing') return;
+            // If we just finished a drag, ignore click
+            if (this.drag?.suppressClick) return;
+
+            // If in swap mode, handled above
+            if (state.swapMode) return;
+
             if (this.selectedTileId === tile.id) {
               this.selectedTileId = null;
               this.render();
@@ -390,32 +366,11 @@ export class GameUI {
             this.render();
           });
 
-          slot.draggable = true;
-          slot.addEventListener('dragstart', (e) => {
-            e.dataTransfer?.setData('text/plain', tile.id);
-            slot.classList.add('dragging');
+          // ── Pointer down (drag start) ──
+          slot.addEventListener('pointerdown', (e) => {
+            if (this.game.phase !== 'placing') return;
+            this.startDrag(tile.id, 'rack', e);
           });
-          slot.addEventListener('dragend', () => slot.classList.remove('dragging'));
-
-          slot.addEventListener('touchstart', (e) => {
-            const touch = e.touches[0];
-            if (!touch) return;
-            this.dragTileId = tile.id;
-            const rect = slot.getBoundingClientRect();
-            this.dragOffsetX = touch.clientX - rect.left;
-            this.dragOffsetY = touch.clientY - rect.top;
-            this.dragClone = slot.cloneNode(true) as HTMLElement;
-            this.dragClone.className = 'tile-drag-clone';
-            this.dragClone.style.position = 'fixed';
-            this.dragClone.style.left = `${touch.clientX - this.dragOffsetX}px`;
-            this.dragClone.style.top = `${touch.clientY - this.dragOffsetY}px`;
-            this.dragClone.style.width = `${rect.width}px`;
-            this.dragClone.style.height = `${rect.height}px`;
-            this.dragClone.style.zIndex = '1000';
-            this.dragClone.style.pointerEvents = 'none';
-            this.dragClone.textContent = tile.letter || '?';
-            document.body.appendChild(this.dragClone);
-          }, { passive: true });
         }
       } else {
         slot.classList.add('empty');
@@ -425,7 +380,205 @@ export class GameUI {
     }
 
     rackContainer.appendChild(rack);
+
+    // Pointer up on rack container = drop to return pending tile
+    rackContainer.addEventListener('pointerup', (e) => {
+      this.onGlobalPointerUp(e);
+    });
+
     return rackContainer;
+  }
+
+  // ─── Pointer Events: Drag System ─────────────────────
+
+  /** Start tracking a potential drag from the given source. */
+  private startDrag(
+    tileId: string,
+    source: 'rack' | 'board',
+    e: PointerEvent,
+    sourceRow?: number,
+    sourceCol?: number
+  ): void {
+    if (this.drag) return; // already dragging
+
+    const el = e.currentTarget as HTMLElement;
+    el.setPointerCapture(e.pointerId);
+
+    this.drag = {
+      tileId,
+      isDragging: false,
+      startX: e.clientX,
+      startY: e.clientY,
+      clone: null,
+      source,
+      sourceRow: sourceRow ?? -1,
+      sourceCol: sourceCol ?? -1,
+      currentTarget: null,
+      suppressClick: false,
+    };
+
+    // Add document-level listeners for move/up
+    document.addEventListener('pointermove', this.onGlobalPointerMove);
+    document.addEventListener('pointerup', this.onGlobalPointerUp);
+  }
+
+  private onGlobalPointerMove = (e: PointerEvent): void => {
+    if (!this.drag) return;
+
+    const dist = Math.hypot(e.clientX - this.drag.startX, e.clientY - this.drag.startY);
+
+    if (!this.drag.isDragging && dist > 6) {
+      // Threshold crossed — start actual drag
+      this.drag.isDragging = true;
+
+      // Prevent page scrolling on mobile
+      document.body.style.overflow = 'hidden';
+      document.body.style.touchAction = 'none';
+
+      // Create drag clone
+      const sourceEl = document.elementFromPoint(this.drag.startX, this.drag.startY);
+      const tileEl = sourceEl?.closest('.has-tile') as HTMLElement;
+      if (tileEl) {
+        const clone = tileEl.cloneNode(true) as HTMLElement;
+        clone.className = 'tile-drag-clone';
+        clone.style.position = 'fixed';
+        clone.style.left = `${e.clientX - 20}px`;
+        clone.style.top = `${e.clientY - 20}px`;
+        clone.style.width = `${tileEl.offsetWidth}px`;
+        clone.style.height = `${tileEl.offsetHeight}px`;
+        clone.style.zIndex = '1000';
+        clone.style.pointerEvents = 'none';
+        document.body.appendChild(clone);
+        this.drag.clone = clone;
+      }
+
+      // Add held class to source for visual feedback
+      if (tileEl) {
+        tileEl.classList.add('tile-held');
+      }
+    }
+
+    // Update clone position
+    if (this.drag.isDragging && this.drag.clone) {
+      this.drag.clone.style.left = `${e.clientX - 20}px`;
+      this.drag.clone.style.top = `${e.clientY - 20}px`;
+
+      // Highlight drop target
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const cell = el?.closest('.cell') as HTMLElement;
+
+      if (cell !== this.drag.currentTarget) {
+        if (this.drag.currentTarget) {
+          this.drag.currentTarget.classList.remove('drag-over');
+        }
+        this.drag.currentTarget = cell;
+        if (cell) {
+          cell.classList.add('drag-over');
+        }
+      }
+    }
+  };
+
+  private onGlobalPointerUp = (e: PointerEvent): void => {
+    if (!this.drag) return;
+
+    // Remove document-level listeners
+    document.removeEventListener('pointermove', this.onGlobalPointerMove);
+    document.removeEventListener('pointerup', this.onGlobalPointerUp);
+
+    // Restore scrolling
+    document.body.style.overflow = '';
+    document.body.style.touchAction = '';
+
+    // Clean up clone + highlights
+    if (this.drag.clone) {
+      this.drag.clone.remove();
+    }
+    if (this.drag.currentTarget) {
+      this.drag.currentTarget.classList.remove('drag-over');
+    }
+
+    // Remove held class from source tile
+    // Try to find and unmark the held tile
+    document.querySelectorAll('.tile-held').forEach((el) => el.classList.remove('tile-held'));
+
+    if (this.drag.isDragging) {
+      // ── Actual drag completed — resolve placement ──
+      this.drag.suppressClick = true;
+
+      const target = document.elementFromPoint(e.clientX, e.clientY);
+      const cell = target?.closest('.cell') as HTMLElement;
+      const isOverRack = target?.closest('.rack-container') !== null;
+      const isOverBoardCell = cell !== null;
+      const isEmptyCell = cell && !cell.classList.contains('has-tile');
+
+      if (isOverBoardCell && isEmptyCell) {
+        // Drop on empty board cell
+        const row = parseInt(cell.dataset.row!);
+        const col = parseInt(cell.dataset.col!);
+        if (this.drag.source === 'board') {
+          this.game.movePendingTile(this.drag.tileId, row, col);
+        } else {
+          this.game.placeTile(this.drag.tileId, row, col);
+        }
+        this.selectedTileId = null;
+      } else if (isOverRack && this.drag.source === 'board') {
+        // Drop on rack — return pending tile
+        this.game.removeTile(this.drag.sourceRow, this.drag.sourceCol);
+        this.selectedTileId = null;
+      }
+      // else: dropped elsewhere — tile stays where it was
+
+      this.clearDrag();
+      this.save();
+      this.render();
+    } else {
+      // ── Tap (no drag) — let click handlers do the work ──
+      // but we still need to clean up drag state
+      this.clearDrag();
+    }
+  };
+
+  /** Clean up drag state without resolving. */
+  private clearDrag(): void {
+    if (this.drag?.clone) {
+      this.drag.clone.remove();
+    }
+    if (this.drag?.currentTarget) {
+      this.drag.currentTarget.classList.remove('drag-over');
+    }
+    document.body.style.overflow = '';
+    document.body.style.touchAction = '';
+    document.querySelectorAll('.tile-held').forEach((el) => el.classList.remove('tile-held'));
+    this.drag = null;
+  }
+
+  // ─── Live Preview ────────────────────────────────────
+
+  private createLivePreview(
+    preview: { valid: boolean; words: WordResult[]; totalScore: number; error?: string } | null
+  ): HTMLElement {
+    const bar = document.createElement('div');
+    bar.className = 'preview-bar';
+
+    if (!preview) {
+      bar.classList.add('preview-empty');
+      bar.textContent = 'Place tiles to see word preview';
+      return bar;
+    }
+
+    if (preview.valid) {
+      bar.classList.add('preview-valid');
+      const wordStr = preview.words.map((w) => `"${w.word}"`).join(', ');
+      const pendingCount = this.game.getPendingTiles().length;
+      const bingoNote = pendingCount >= 7 ? ' 🎉 Bingo!' : '';
+      bar.textContent = `${wordStr} → ${preview.totalScore} pts${bingoNote}`;
+    } else {
+      bar.classList.add('preview-invalid');
+      bar.innerHTML = `✕ ${this.esc(preview.error ?? 'Invalid move')}`;
+    }
+
+    return bar;
   }
 
   // ─── Actions Bar ─────────────────────────────────────

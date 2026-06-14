@@ -247,7 +247,28 @@ body {
   z-index: 2;
 }
 
-.cell.drag-over { background: rgba(91, 127, 94, 0.18); }
+.cell.drag-over { background: rgba(91, 127, 94, 0.25); }
+
+/* Tile being dragged — visual state on source */
+.tile-held {
+  opacity: 0.25;
+  transform: scale(0.85);
+  transition: opacity 0.1s, transform 0.1s;
+}
+
+.tile-drag-clone {
+  background: var(--tile-bg);
+  border: 2px solid var(--accent);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1.05rem;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+  transform: scale(1.08);
+  transition: none;
+}
 
 /* ══════════════════════════════════════════════════════
    GAME: LIVE PREVIEW
@@ -327,20 +348,7 @@ body {
 .rack-slot.has-tile.selected { border-color: var(--accent); background: var(--accent-light); transform: translateY(-5px); }
 .rack-slot.empty { border: 1px dashed rgba(0,0,0,0.1); background: transparent; }
 .rack-slot.on-board { border: 1px dashed rgba(0,0,0,0.08); background: rgba(0,0,0,0.03); opacity: 0.4; }
-.rack-slot.dragging { opacity: 0.3; }
 .rack-slot.blank-tile::after { content: ''; position: absolute; width: 55%; height: 2px; background: var(--tile-border); bottom: 3px; }
-
-.tile-drag-clone {
-  background: var(--tile-bg);
-  border: 2px solid var(--accent);
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 1.05rem;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.25);
-}
 
 /* ══════════════════════════════════════════════════════
    GAME: ACTIONS
