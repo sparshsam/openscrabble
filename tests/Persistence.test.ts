@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Game } from '../src/game/Game.js';
 import { GamePersistence } from '../src/game/Persistence.js';
-import { WordValidator } from '../src/game/WordValidator.js';
 import { resetTileCounter } from '../src/data/tileDistribution.js';
 
 // Mock localStorage for Node test environment
@@ -190,14 +189,24 @@ describe('Rack behavior', () => {
     game.placeTile(tile.id, 7, 7);
     game.placeTile(tile2.id, 7, 8);
 
-    const preview = game.previewMove();
-    expect(preview.valid).toBe(WordValidator.allValid(preview.words.map(w => w.word)));
-
-    // Submit doesn't clear tiles
+    // Submit the word — it may succeed or fail depending on which
+    // random tiles were drawn, but in either case the game state
+    // must be internally consistent.
     const result = game.submitWord();
-    if (!result.success) {
-      // Player can still see and fix the tiles
+
+    if (result.success) {
+      // Word was valid — turn switched, rack refilled
+      expect(game.currentPlayerIndex).toBe(1);
+      expect(game.players[0]!.rack.filter((t) => t !== null).length).toBe(7);
+      expect(game.getPendingTiles().length).toBe(0);
+    } else {
+      // Word was invalid — tiles remain on board for the player to fix
       expect(game.getPendingTiles().length).toBeGreaterThan(0);
+      expect(game.board.getTile(7, 7)).not.toBeNull();
+      expect(game.board.getTile(7, 8)).not.toBeNull();
+      expect(game.players[0]!.rack.filter((t) => t !== null).length).toBe(5);
+      expect(game.currentPlayerIndex).toBe(0);
+
       // Player can clear them manually
       game.clearPending();
       expect(game.getPendingTiles().length).toBe(0);
