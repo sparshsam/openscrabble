@@ -3,38 +3,33 @@ import { Game } from '../game/Game.js';
 import { GamePersistence } from '../game/Persistence.js';
 import { getPremiumType } from '../game/Board.js';
 
-/**
- * Pointer drag state — tracks an ongoing drag from rack or board cell.
- */
-interface DragState {
+/** What tile the player has currently selected for tap-to-place. */
+interface Selection {
   tileId: string;
-  isDragging: boolean;
-  startX: number;
-  startY: number;
-  clone: HTMLElement | null;
+  /** Where the tile currently sits. */
   source: 'rack' | 'board';
-  sourceRow: number;
-  sourceCol: number;
-  currentTarget: HTMLElement | null;
-  suppressClick: boolean;
-  /** True while a touch-based drag is active — used to prevent
-   *  the pair of pointer events that fire after touch events. */
-  touchActive: boolean;
+  /** Board position if source === 'board'. */
+  boardRow?: number;
+  boardCol?: number;
 }
 
 /**
  * GameUI — renders the full game screen with live feedback,
- * tile scores, validation preview, and mobile-first layout.
- * Uses Pointer Events + Touch Events fallback for all tile
- * interaction (mouse, touch, pen).
- * Tap-to-select/place retained as fallback.
+ * tile scores, validation preview.
+ *
+ * Input model: tap-first (reliable on both phone and desktop).
+ * - Tap/click a rack tile → select it.
+ * - Tap/click an empty board square → place the selected tile.
+ * - Tap/click a pending board tile → select it.
+ * - Tap/click another empty board square → move it.
+ * - Tap/click a selected pending tile again → return it to rack.
+ *
  * Automatically saves state to localStorage after every action.
  */
 export class GameUI {
   private game: Game;
   private root: HTMLElement;
-  private selectedTileId: string | null = null;
-  private drag: DragState | null = null;
+  private selectedTile: Selection | null = null;
   private swapSelection: Set<string> = new Set();
   private onBackToHome: (() => void) | null = null;
 
@@ -111,8 +106,7 @@ export class GameUI {
         this.game.players[0]!.name,
         this.game.players[1]!.name
       );
-      this.selectedTileId = null;
-      this.clearDrag();
+      this.selectedTile = null;
       this.render();
     }
   }
@@ -165,7 +159,6 @@ export class GameUI {
     }
 
     boardContainer.appendChild(boardEl);
-
     return boardContainer;
   }
 
@@ -180,6 +173,7 @@ export class GameUI {
 
     const tile = state.board[row]![col];
     const isPending = pendingSet.has(`${row},${col}`);
+    const isLocked = tile !== null && !isPending; // submitted tile, cannot move
     const premium = getPremiumType(row, col);
 
     // Center star
@@ -203,10 +197,13 @@ export class GameUI {
         if (preview) {
           cell.classList.add(preview.valid ? 'pending-valid' : 'pending-invalid');
         }
-        // Highlight the selected pending tile
-        if (this.selectedTileId === tile.id) {
+        // Highlight if this is the currently selected pending tile
+        if (this.selectedTile?.tileId === tile.id && this.selectedTile.source === 'board') {
           cell.classList.add('selected');
         }
+      }
+      if (isLocked) {
+        cell.classList.add('locked');
       }
       cell.dataset.tileId = tile.id;
       cell.textContent = tile.playedAs ?? tile.letter;
@@ -218,50 +215,45 @@ export class GameUI {
       cell.appendChild(badge);
     }
 
-    // ── Click (tap-to-place / tap-to-move) ──
+    // ── Click / Tap handler ──────────────────────────
     cell.addEventListener('click', () => {
       if (!this.game || this.game.phase !== 'placing') return;
-      // If we just finished a drag on this cell, ignore the click
-      if (this.drag?.suppressClick) return;
+
+      if (isLocked) {
+        // Locked/submitted tile — do nothing
+        return;
+      }
 
       if (isPending) {
-        // Tapping a pending tile: if selected, remove; otherwise select
-        if (this.selectedTileId === tile?.id) {
+        // Pending board tile tapped
+        if (this.selectedTile?.tileId === tile!.id) {
+          // Already selected → return it to rack
           this.game.removeTile(row, col);
-          this.selectedTileId = null;
+          this.selectedTile = null;
         } else {
-          this.selectedTileId = tile?.id ?? null;
+          // Select this pending tile for moving
+          this.selectedTile = { tileId: tile!.id, source: 'board', boardRow: row, boardCol: col };
         }
         this.save();
         this.render();
         return;
       }
 
-      if (this.selectedTileId && !tile) {
-        this.game.placeTile(this.selectedTileId, row, col);
-        this.selectedTileId = null;
+      // Empty cell tapped while a tile is selected
+      if (this.selectedTile && !tile) {
+        const sel = this.selectedTile;
+        if (sel.source === 'board') {
+          // Move pending tile to new cell
+          this.game.movePendingTile(sel.tileId, row, col);
+        } else {
+          // Place rack tile on board
+          this.game.placeTile(sel.tileId, row, col);
+        }
+        this.selectedTile = null;
         this.save();
         this.render();
       }
     });
-
-    // ── Drag start for pending tiles (pointer + touch) ──
-    if (isPending) {
-      cell.addEventListener('pointerdown', (e) => {
-        if (this.game.phase !== 'placing' || !tile) return;
-        if (this.drag) return; // already dragging
-        this.initDrag(tile.id, 'board', e.clientX, e.clientY, row, col);
-      });
-
-      cell.addEventListener('touchstart', (e) => {
-        if (this.game.phase !== 'placing' || !tile) return;
-        if (this.drag) return; // already dragging
-        const touch = e.touches[0];
-        if (!touch) return;
-        this.initDrag(tile.id, 'board', touch.clientX, touch.clientY, row, col);
-        this.plumbTouchListeners(e);
-      });
-    }
 
     return cell;
   }
@@ -286,7 +278,6 @@ export class GameUI {
     for (let i = 0; i < 7; i++) {
       const slot = document.createElement('div');
       slot.className = 'rack-slot';
-      slot.setAttribute('draggable', 'false');
       const tile = player.rack[i];
 
       if (tile) {
@@ -315,6 +306,9 @@ export class GameUI {
           slot.classList.add('empty', 'on-board');
           slot.textContent = '';
         } else {
+          // Normal rack tile — available for selection
+          const isThisSelected = this.selectedTile?.tileId === tile.id && this.selectedTile.source === 'rack';
+
           slot.textContent = tile.letter || '?';
           if (tile.points > 0) {
             const badge = document.createElement('span');
@@ -324,47 +318,23 @@ export class GameUI {
           }
           if (tile.letter === '') slot.classList.add('blank-tile');
           slot.dataset.tileId = tile.id;
+          if (isThisSelected) {
+            slot.classList.add('is-selected');
+          }
 
-          // ── Click (tap to select) ──
+          // ── Click / Tap handler ──
           slot.addEventListener('click', () => {
             if (this.game.phase !== 'placing') return;
-            // If we just finished a drag, ignore click
-            if (this.drag?.suppressClick && !this.drag?.touchActive) return;
-            if (this.drag?.touchActive) return;
-
             if (state.swapMode) return;
 
-            if (this.selectedTileId === tile.id) {
-              this.selectedTileId = null;
-              this.render();
-              return;
+            if (this.selectedTile?.tileId === tile.id && this.selectedTile.source === 'rack') {
+              // Deselect
+              this.selectedTile = null;
+            } else {
+              // Select this rack tile for placing
+              this.selectedTile = { tileId: tile.id, source: 'rack' };
             }
-            const pending = this.game.getPendingTiles().find((t) => t.id === tile.id);
-            if (pending) {
-              this.game.removeTile(pending.row, pending.col);
-              this.save();
-              this.selectedTileId = null;
-              this.render();
-              return;
-            }
-            this.selectedTileId = tile.id;
             this.render();
-          });
-
-          // ── Drag start (pointer + touch) ──
-          slot.addEventListener('pointerdown', (e) => {
-            if (this.game.phase !== 'placing') return;
-            if (this.drag) return;
-            this.initDrag(tile.id, 'rack', e.clientX, e.clientY);
-          });
-
-          slot.addEventListener('touchstart', (e) => {
-            if (this.game.phase !== 'placing') return;
-            if (this.drag) return;
-            const touch = e.touches[0];
-            if (!touch) return;
-            this.initDrag(tile.id, 'rack', touch.clientX, touch.clientY);
-            this.plumbTouchListeners(e);
           });
         }
       } else {
@@ -375,232 +345,8 @@ export class GameUI {
     }
 
     rackContainer.appendChild(rack);
-
     return rackContainer;
   }
-
-  // ══════════════════════════════════════════════════════
-  //  DRAG SYSTEM (shared by Pointer Events + Touch Events)
-  // ══════════════════════════════════════════════════════
-
-  /**
-   * Start dragging a tile from the given coordinates.
-   * Called by both pointerdown and touchstart handlers.
-   */
-  private initDrag(
-    tileId: string,
-    source: 'rack' | 'board',
-    clientX: number,
-    clientY: number,
-    sourceRow?: number,
-    sourceCol?: number
-  ): void {
-    if (this.drag) return;
-
-    this.drag = {
-      tileId,
-      isDragging: false,
-      startX: clientX,
-      startY: clientY,
-      clone: null,
-      source,
-      sourceRow: sourceRow ?? -1,
-      sourceCol: sourceCol ?? -1,
-      currentTarget: null,
-      suppressClick: false,
-      touchActive: false,
-    };
-
-    // Immediately create the clone so it follows the finger with no delay
-    this.dragCloneAt(clientX, clientY);
-
-    // Prevent page scrolling on mobile immediately
-    document.body.style.overflow = 'hidden';
-    document.body.style.touchAction = 'none';
-
-    // Add document-level move/up listeners for both pointer and touch
-    document.addEventListener('pointermove', this.onGlobalPointerMove);
-    document.addEventListener('pointerup', this.onGlobalPointerUp);
-  }
-
-  /**
-   * After touchstart has started a drag, attach document-level touch
-   * move/end listeners. We use a separate code path with {passive:false}
-   * so we can preventDefault() and block scrolling on iOS.
-   */
-  private plumbTouchListeners(e: TouchEvent): void {
-    if (this.drag) {
-      this.drag.touchActive = true;
-    }
-    e.preventDefault();
-    document.addEventListener('touchmove', this.onGlobalTouchMove, { passive: false });
-    document.addEventListener('touchend', this.onGlobalTouchEnd, { passive: false });
-  }
-
-  /** Create (or reposition) the drag clone centered on (x, y). */
-  private dragCloneAt(clientX: number, clientY: number): void {
-    if (!this.drag) return;
-
-    // Find the source tile element under the start point
-    const sourceEl = document.elementFromPoint(clientX, clientY);
-    const tileEl = sourceEl?.closest('.has-tile') as HTMLElement;
-    if (!tileEl) return;
-
-    if (!this.drag.clone) {
-      // First creation — build the clone
-      const clone = tileEl.cloneNode(true) as HTMLElement;
-      clone.className = 'tile-drag-clone';
-      const size = Math.max(tileEl.offsetWidth || 36, 40);
-      clone.style.width = `${size}px`;
-      clone.style.height = `${size}px`;
-      clone.style.fontSize = 'clamp(1rem, 4vw, 1.4rem)';
-      document.body.appendChild(clone);
-      this.drag.clone = clone;
-
-      // Mark source as held
-      tileEl.classList.add('tile-held');
-    }
-
-    // Position clone: left/top at clientX/clientY; CSS translate(-50%,-50%) centers it
-    if (this.drag.clone) {
-      this.drag.clone.style.left = `${clientX}px`;
-      this.drag.clone.style.top = `${clientY}px`;
-    }
-    this.drag.isDragging = true;
-  }
-
-  /** Re-highlight the cell under (clientX, clientY). */
-  private highlightTargetAt(clientX: number, clientY: number): void {
-    if (!this.drag) return;
-    const el = document.elementFromPoint(clientX, clientY);
-    const cell = el?.closest('.cell') as HTMLElement;
-
-    if (cell !== this.drag.currentTarget) {
-      if (this.drag.currentTarget) {
-        this.drag.currentTarget.classList.remove('drag-over');
-      }
-      this.drag.currentTarget = cell;
-      if (cell) {
-        cell.classList.add('drag-over');
-      }
-    }
-  }
-
-  /** Resolve where to drop the tile and update game state. */
-  private resolveDragAt(clientX: number, clientY: number): void {
-    if (!this.drag || !this.drag.isDragging) return;
-    this.drag.suppressClick = true;
-
-    const target = document.elementFromPoint(clientX, clientY);
-    const cell = target?.closest('.cell') as HTMLElement;
-    const isOverRack = target?.closest('.rack-container') !== null;
-    const isOverBoardCell = cell !== null;
-    const isEmptyCell = cell && !cell.classList.contains('has-tile');
-
-    if (isOverBoardCell && isEmptyCell) {
-      // Drop on empty board cell
-      const row = parseInt(cell.dataset.row!);
-      const col = parseInt(cell.dataset.col!);
-      if (this.drag.source === 'board') {
-        this.game.movePendingTile(this.drag.tileId, row, col);
-      } else {
-        this.game.placeTile(this.drag.tileId, row, col);
-      }
-      this.selectedTileId = null;
-    } else if (isOverRack && this.drag.source === 'board') {
-      // Drop on rack — return pending tile
-      this.game.removeTile(this.drag.sourceRow, this.drag.sourceCol);
-      this.selectedTileId = null;
-    }
-    // else: dropped elsewhere — tile stays where it was
-  }
-
-  /** Full drag cleanup — clone, highlights, scroll, listeners. */
-  private finalizeDrag(clientX: number, clientY: number): void {
-    if (!this.drag) return;
-
-    // Remove all document-level listeners
-    document.removeEventListener('pointermove', this.onGlobalPointerMove);
-    document.removeEventListener('pointerup', this.onGlobalPointerUp);
-    document.removeEventListener('touchmove', this.onGlobalTouchMove);
-    document.removeEventListener('touchend', this.onGlobalTouchEnd);
-
-    // Restore scrolling
-    document.body.style.overflow = '';
-    document.body.style.touchAction = '';
-
-    // Clean up clone + highlights
-    if (this.drag.clone) {
-      this.drag.clone.remove();
-    }
-    if (this.drag.currentTarget) {
-      this.drag.currentTarget.classList.remove('drag-over');
-    }
-
-    // Remove held class from source tile
-    document.querySelectorAll('.tile-held').forEach((el) => el.classList.remove('tile-held'));
-
-    if (this.drag.isDragging) {
-      this.resolveDragAt(clientX, clientY);
-    }
-
-    this.save();
-    this.render();
-  }
-
-  /** Clean up drag state without resolving. */
-  private clearDrag(): void {
-    if (!this.drag) return;
-
-    document.removeEventListener('pointermove', this.onGlobalPointerMove);
-    document.removeEventListener('pointerup', this.onGlobalPointerUp);
-    document.removeEventListener('touchmove', this.onGlobalTouchMove);
-    document.removeEventListener('touchend', this.onGlobalTouchEnd);
-
-    document.body.style.overflow = '';
-    document.body.style.touchAction = '';
-
-    if (this.drag.clone) {
-      this.drag.clone.remove();
-    }
-    if (this.drag.currentTarget) {
-      this.drag.currentTarget.classList.remove('drag-over');
-    }
-    document.querySelectorAll('.tile-held').forEach((el) => el.classList.remove('tile-held'));
-    this.drag = null;
-  }
-
-  // ─── Pointer Event Handlers ──────────────────────────
-
-  private onGlobalPointerMove = (e: PointerEvent): void => {
-    if (!this.drag) return;
-    this.dragCloneAt(e.clientX, e.clientY);
-    this.highlightTargetAt(e.clientX, e.clientY);
-  };
-
-  private onGlobalPointerUp = (e: PointerEvent): void => {
-    if (!this.drag) return;
-    this.finalizeDrag(e.clientX, e.clientY);
-  };
-
-  // ─── Touch Event Handlers (fallback for mobile) ──────
-
-  private onGlobalTouchMove = (e: TouchEvent): void => {
-    if (!this.drag) return;
-    e.preventDefault(); // prevent page scroll
-    const touch = e.touches[0];
-    if (!touch) return;
-    this.dragCloneAt(touch.clientX, touch.clientY);
-    this.highlightTargetAt(touch.clientX, touch.clientY);
-  };
-
-  private onGlobalTouchEnd = (e: TouchEvent): void => {
-    if (!this.drag) return;
-    e.preventDefault();
-    const touch = e.changedTouches[0];
-    if (!touch) return;
-    this.finalizeDrag(touch.clientX, touch.clientY);
-  };
 
   // ─── Live Preview ────────────────────────────────────
 
@@ -670,12 +416,8 @@ export class GameUI {
       submitBtn.title = isMoveInvalid ? (preview?.error ?? 'Fix the word before submitting') : '';
       submitBtn.addEventListener('click', () => {
         const result = this.game.submitWord();
-        if (result.success) {
-          this.showMessage(result);
-        } else {
-          this.showMessage(result);
-        }
-        this.selectedTileId = null;
+        this.showMessage(result);
+        this.selectedTile = null;
         this.save();
         this.render();
       });
@@ -687,7 +429,7 @@ export class GameUI {
       clearBtn.disabled = pendingCount === 0;
       clearBtn.addEventListener('click', () => {
         this.game.clearPending();
-        this.selectedTileId = null;
+        this.selectedTile = null;
         this.save();
         this.render();
       });
@@ -698,7 +440,7 @@ export class GameUI {
       passBtn.textContent = 'Pass';
       passBtn.addEventListener('click', () => {
         this.game.passTurn();
-        this.selectedTileId = null;
+        this.selectedTile = null;
         this.save();
         this.render();
       });
