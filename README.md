@@ -1,4 +1,4 @@
-# OpenScrabble v0.1
+# OpenScrabble v0.2
 
 A clean, local-first, two-player Scrabble game built with TypeScript and Vite. Mobile-first design, no accounts, no AI, no nonsense.
 
@@ -48,10 +48,22 @@ OpenScrabble follows standard Scrabble rules:
 | Action | Desktop | Mobile |
 |--------|---------|--------|
 | Select tile from rack | Click | Tap |
-| Place tile on board | Click or drag | Tap or touch-drag |
-| Remove placed tile | Click placed tile | Tap placed tile |
+| Place tile on board | Click empty square | Tap empty square |
+| Move pending tile | Click pending tile, then target square | Tap pending tile, then target square |
+| Return pending tile to rack | Click selected pending tile again | Tap selected pending tile again |
+| Clear all pending tiles | Click Clear | Tap Clear |
 | Submit word | Click Submit | Tap Submit |
 | Pass/Swap | Click button | Tap button |
+
+## Dictionary
+
+OpenScrabble uses a **built-in word list** for dictionary validation.
+
+- **Source**: The word list (`src/data/wordList.ts`) is a ~100K-word SOWPODS-derived set. It covers the vast majority of valid Scrabble words.
+- **2-letter words**: Validated against the official **TWL/NASPA** 2-letter word list (107 words including AA, EW, OK, KO, QI, XU, ZA, etc.). Any 2-letter combination not in this official list is rejected.
+- **Longer words**: Checked against the full ~100K word list. Some uncommon valid words may be missing; some obscure entries may be present.
+- **Cross-words**: All words formed by a move (main word + cross-words) are validated independently. If any formed word fails, the entire move is rejected and tiles remain on the board for the player to fix.
+- **Limitations**: This is not an official Scrabble dictionary. For tournament play, consult the official NASPA or WESPA word list.
 
 ## Project Structure
 

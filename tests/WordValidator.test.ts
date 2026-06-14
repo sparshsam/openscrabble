@@ -78,17 +78,17 @@ describe('WordValidator', () => {
       'ba','be','bi','bo','by',
       'ch',
       'da','de','do',
-      'ed','ef','eh','el','em','en','er','es','et','ex',
+      'ed','ef','eh','el','em','en','er','es','et','ew','ex',
       'fa','fe',
       'gi','go',
       'ha','he','hi','hm','ho',
       'id','if','in','is','it',
       'jo',
-      'ka','ki',
+      'ka','ki','ko',
       'la','li','lo',
       'ma','me','mi','mm','mo','mu','my',
       'na','ne','no','nu',
-      'od','oe','of','oh','oi','om','on','op','or','os','ow','ox','oy',
+      'od','oe','of','oh','oi','ok','om','on','op','or','os','ow','ox','oy',
       'pa','pe','pi','po',
       'qi',
       're',
@@ -116,5 +116,21 @@ describe('WordValidator', () => {
     for (const w of invalidTwoLetter) {
       expect(WordValidator.isValid(w)).toBe(false);
     }
+  });
+
+  // Specific regression: EW is a valid official Scrabble word
+  it('accepts EW as a valid 2-letter word', () => {
+    expect(WordValidator.isValid('EW')).toBe(true);
+    expect(WordValidator.isValid('ew')).toBe(true);
+  });
+
+  it('accepts OK as a valid 2-letter word', () => {
+    expect(WordValidator.isValid('OK')).toBe(true);
+    expect(WordValidator.isValid('ok')).toBe(true);
+  });
+
+  it('accepts KO as a valid 2-letter word', () => {
+    expect(WordValidator.isValid('KO')).toBe(true);
+    expect(WordValidator.isValid('ko')).toBe(true);
   });
 });
