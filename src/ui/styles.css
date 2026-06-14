@@ -235,7 +235,11 @@ body {
   line-height: 1.1;
 }
 
-.cell.pending { border-color: #888; }
+.cell.pending {
+  border-color: #888;
+  touch-action: none;
+  -webkit-touch-callout: none;
+}
 
 .cell.pending-valid {
   box-shadow:
@@ -354,6 +358,8 @@ body {
   border: 1.5px solid var(--tile-border);
   box-shadow: 0 2px 4px rgba(0,0,0,0.15);
   color: var(--tile-text);
+  touch-action: none !important;
+  -webkit-touch-callout: none;
 }
 
 .rack-slot.has-tile .tile-points {
