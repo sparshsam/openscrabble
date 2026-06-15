@@ -106,7 +106,7 @@
   --safe-gap: max(env(safe-area-inset-left, 8px), 8px);
 
   /* Sizing */
-  --cell-size: clamp(28px, calc((100dvw - 32px) / 15), 46px);
+  --cell-size: clamp(24px, calc((100dvw - 44px) / 15), 46px);
   --board-padding: 6px;
   --board-radius: 4px;
 }
@@ -127,8 +127,8 @@ body {
   color: var(--text);
   line-height: 1.4;
   margin: 0;
-  padding: var(--space-2) var(--safe-gap);
-  padding-bottom: max(env(safe-area-inset-bottom, 0px), var(--space-2));
+  padding: 4px var(--safe-gap) 0;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   min-height: 100dvh;
   overflow-x: hidden;
   overflow-y: auto;
@@ -692,7 +692,7 @@ body {
 
 .rack-container {
   width: 100%;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 4px);
 }
 
 .rack-label {
@@ -967,6 +967,124 @@ body {
 @media (hover: hover) {
   .blank-picker-btn:hover {
     background: var(--accent-light);
+  }
+}
+
+/* ══════════════════════════════════════════════════════
+   MOBILE ADAPTATIONS (<600px)
+   ══════════════════════════════════════════════════════ */
+
+@media (max-width: 599px) {
+  .game-container {
+    gap: 3px;
+  }
+
+  /* Compact header */
+  .game-header {
+    padding: 1px 0;
+  }
+
+  .game-header h1 {
+    font-size: var(--text-md);
+  }
+
+  .turn-indicator {
+    font-size: 0.6rem;
+    padding: 2px 8px;
+  }
+
+  .btn-icon {
+    width: 32px;
+    height: 32px;
+    font-size: 1rem;
+  }
+
+  /* Compact score cards */
+  .score-display {
+    gap: 2px;
+  }
+
+  .player-score {
+    padding: 3px 6px;
+  }
+
+  .player-name {
+    font-size: 0.65rem;
+  }
+
+  .player-score-value {
+    font-size: var(--text-sm);
+  }
+
+  .tiles-left {
+    font-size: 0.55rem;
+  }
+
+  .bag-count {
+    font-size: 0.55rem;
+    padding: 3px 6px;
+  }
+
+  /* Compact preview bar */
+  .preview-bar {
+    min-height: 24px;
+    padding: 3px 8px;
+    font-size: var(--text-xs);
+  }
+
+  .preview-empty {
+    min-height: 20px;
+  }
+
+  /* Compact buttons */
+  .btn {
+    padding: 6px 10px;
+    font-size: var(--text-xs);
+    min-height: 32px;
+    border-radius: var(--radius-xs);
+  }
+
+  .actions-bar {
+    gap: 3px;
+    padding: 1px 0;
+  }
+
+  /* Compact rack */
+  .rack-slot {
+    font-size: 0.95rem;
+    max-width: 48px;
+  }
+
+  .rack-slot.has-tile .tile-points {
+    font-size: 0.5rem;
+  }
+
+  .tile-rack {
+    gap: 3px;
+    padding: 5px;
+    border-width: 1.5px;
+  }
+
+  .rack-label {
+    font-size: 0.6rem;
+    margin-bottom: 2px;
+  }
+
+  /* Board adjustments */
+  .board-container {
+    padding: 4px;
+  }
+
+  /* Commit history hidden on mobile */
+  .game-over-banner {
+    padding: var(--space-3);
+    font-size: var(--text-sm);
+  }
+
+  .message-area {
+    min-height: 22px;
+    font-size: var(--text-xs);
+    padding: 3px;
   }
 }
 
