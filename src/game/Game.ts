@@ -53,7 +53,7 @@ export class Game {
       result.push(null);
     }
     const emptySlots = result.filter((t) => t === null).length;
-    if (emptySlots <= 0) return result;
+    if (emptySlots <= 0) return this.sortRack(result);
 
     const drawn = this.bag.draw(emptySlots);
     let drawIdx = 0;
@@ -62,7 +62,23 @@ export class Game {
         result[i] = drawn[drawIdx++]!;
       }
     }
-    return result;
+    return this.sortRack(result);
+  }
+
+  /** Sort a rack array alphabetically by letter (blanks at end, tiles with playedAs sorted by letter) */
+  private sortRack(rack: (Tile | null)[]): (Tile | null)[] {
+    const tiles = rack.filter((t): t is Tile => t !== null);
+    const nulls = rack.filter((t) => t === null);
+    tiles.sort((a, b) => {
+      const aLetter = (a.playedAs || a.letter || '').toLowerCase();
+      const bLetter = (b.playedAs || b.letter || '').toLowerCase();
+      // Blanks with no letter assigned go last
+      if (!aLetter && !bLetter) return 0;
+      if (!aLetter) return 1;
+      if (!bLetter) return -1;
+      return aLetter.localeCompare(bLetter);
+    });
+    return [...tiles, ...nulls];
   }
 
   /** Place a tile from the rack onto the board (pending). Removes from rack immediately. */
@@ -100,10 +116,12 @@ export class Game {
       if (placed.row === row && placed.col === col) {
         this.board.removeTile(row, col);
         this.pendingTiles.delete(tileId);
-        // Restore tile to first empty rack slot
-        const emptyIdx = this.currentPlayer.rack.findIndex((t) => t === null);
-        if (emptyIdx !== -1) {
-          this.currentPlayer.rack[emptyIdx] = { letter: placed.letter, points: placed.points, id: placed.id, isBlank: placed.isBlank, playedAs: placed.playedAs };
+        // Restore tile to rack and re-sort
+        this.currentPlayer.rack = this.currentPlayer.rack.filter((t) => t !== null);
+        this.currentPlayer.rack.push({ letter: placed.letter, points: placed.points, id: placed.id, isBlank: placed.isBlank, playedAs: placed.playedAs });
+        this.currentPlayer.rack = this.sortRack(this.currentPlayer.rack);
+        while (this.currentPlayer.rack.length < RACK_SIZE) {
+          this.currentPlayer.rack.push(null);
         }
         return true;
       }
@@ -125,6 +143,28 @@ export class Game {
     return true;
   }
 
+  /** Assign a letter to a pending blank tile */
+  assignBlankLetter(tileId: string, letter: string): boolean {
+    if (this.phase !== 'placing') return false;
+    if (letter.length !== 1 || !/^[A-Z]$/i.test(letter)) return false;
+    const pending = this.pendingTiles.get(tileId);
+    if (!pending) return false;
+    const upper = letter.toUpperCase();
+    pending.playedAs = upper;
+    pending.letter = upper; // so word formation uses the letter
+    // Update on board too
+    this.board.removeTile(pending.row, pending.col);
+    this.board.placeTile({ ...pending }, pending.row, pending.col);
+    this.pendingTiles.set(tileId, { ...pending });
+    return true;
+  }
+
+  /** Check if a pending tile is a blank that needs a letter assigned */
+  isPendingBlank(tileId: string): boolean {
+    const pending = this.pendingTiles.get(tileId);
+    return !!pending && !!pending.isBlank && !pending.playedAs;
+  }
+
   /** Get all pending placed tiles */
   getPendingTiles(): PlacedTile[] {
     return [...this.pendingTiles.values()];
@@ -134,13 +174,15 @@ export class Game {
   clearPending(): void {
     for (const placed of this.pendingTiles.values()) {
       this.board.removeTile(placed.row, placed.col);
-      // Restore tile to first empty rack slot
-      const emptyIdx = this.currentPlayer.rack.findIndex((t) => t === null);
-      if (emptyIdx !== -1) {
-        this.currentPlayer.rack[emptyIdx] = { letter: placed.letter, points: placed.points, id: placed.id, isBlank: placed.isBlank, playedAs: placed.playedAs };
-      }
+      // Add tile back to rack
+      this.currentPlayer.rack.push({ letter: placed.letter, points: placed.points, id: placed.id, isBlank: placed.isBlank, playedAs: placed.playedAs });
     }
     this.pendingTiles.clear();
+    // Sort rack and pad to RACK_SIZE
+    this.currentPlayer.rack = this.sortRack(this.currentPlayer.rack);
+    while (this.currentPlayer.rack.length < RACK_SIZE) {
+      this.currentPlayer.rack.push(null);
+    }
   }
 
   /** Submit the current word placement */
@@ -155,9 +197,11 @@ export class Game {
     }
 
     // Validate placement rules
+    // Check for committed (non-pending) tiles — pending tiles are already on the board grid
+    const hasCommittedTiles = this.board.getAllPlacedTiles().length > pending.length;
     const validationError = ScoreCalculator.validatePlacement(
       pending,
-      this.board.hasTiles(),
+      hasCommittedTiles,
       this.board.isCenterOccupied(),
       (r, c) => this.board.isInBounds(r, c),
       (r, c) => this.board.isOccupied(r, c)
@@ -322,9 +366,10 @@ export class Game {
       return { valid: false, words: [], totalScore: 0, error: 'No tiles placed' };
     }
 
+    const hasCommittedTiles = this.board.getAllPlacedTiles().length > pending.length;
     const validationError = ScoreCalculator.validatePlacement(
       pending,
-      this.board.hasTiles(),
+      hasCommittedTiles,
       this.board.isCenterOccupied(),
       (r, c) => this.board.isInBounds(r, c),
       (r, c) => this.board.isOccupied(r, c)
@@ -347,13 +392,16 @@ export class Game {
       return { valid: false, words: [], totalScore: 0, error: `"${badWord.word}" is not a valid word` };
     }
 
+    // Get per-word scores for display
+    const scoredWords = ScoreCalculator.scoreWordsWithDetails(words, (r, c) => this.board.isPremiumUsed(r, c));
+
     const totalScore = ScoreCalculator.calculate(
       words,
       pending.length,
       (r, c) => this.board.isPremiumUsed(r, c)
     );
 
-    return { valid: true, words, totalScore };
+    return { valid: true, words: scoredWords, totalScore };
   }
 
   /** Get the winner (or null if tie / game not over) */

@@ -49,6 +49,9 @@ export class GameUI {
   }
 
   private render(): void {
+    // Clean up any leftover blank picker overlay
+    const oldPicker = document.getElementById('blank-picker-overlay');
+    if (oldPicker) oldPicker.remove();
     const state = this.game.getState();
     this.root.innerHTML = '';
     this.root.appendChild(this.createGameContainer(state));
@@ -245,11 +248,19 @@ export class GameUI {
         if (sel.source === 'board') {
           // Move pending tile to new cell
           this.game.movePendingTile(sel.tileId, row, col);
+          this.selectedTile = null;
         } else {
           // Place rack tile on board
           this.game.placeTile(sel.tileId, row, col);
+          this.selectedTile = null;
+          // If the placed tile is a blank needing a letter, show the picker
+          if (this.game.isPendingBlank(sel.tileId)) {
+            this.save();
+            this.render();
+            this.showBlankPicker(sel.tileId);
+            return;
+          }
         }
-        this.selectedTile = null;
         this.save();
         this.render();
       }
@@ -364,10 +375,10 @@ export class GameUI {
 
     if (preview.valid) {
       bar.classList.add('preview-valid');
-      const wordStr = preview.words.map((w) => `"${w.word}"`).join(', ');
+      const wordsDisplay = preview.words.map((w) => `"${w.word}" (+${w.score})`).join(', ');
       const pendingCount = this.game.getPendingTiles().length;
       const bingoNote = pendingCount >= 7 ? ' 🎉 Bingo!' : '';
-      bar.textContent = `${wordStr} → ${preview.totalScore} pts${bingoNote}`;
+      bar.textContent = `${wordsDisplay} → ${preview.totalScore} pts${bingoNote}`;
     } else {
       bar.classList.add('preview-invalid');
       bar.innerHTML = `✕ ${this.esc(preview.error ?? 'Invalid move')}`;
@@ -416,10 +427,11 @@ export class GameUI {
       submitBtn.title = isMoveInvalid ? (preview?.error ?? 'Fix the word before submitting') : '';
       submitBtn.addEventListener('click', () => {
         const result = this.game.submitWord();
-        this.showMessage(result);
         this.selectedTile = null;
         this.save();
         this.render();
+        // Show message after render so it persists on the fresh message element
+        this.showMessage(result);
       });
       actions.appendChild(submitBtn);
 
@@ -518,7 +530,70 @@ export class GameUI {
     setTimeout(() => {
       msgEl.className = 'message-area';
       msgEl.textContent = '';
-    }, 3500);
+    }, 6000);
+  }
+
+  // ─── Blank Tile Letter Picker ────────────────────────
+
+  private showBlankPicker(tileId: string): void {
+    const old = document.getElementById('blank-picker-overlay');
+    if (old) old.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'blank-picker-overlay';
+    overlay.className = 'blank-picker-overlay';
+
+    const dialog = document.createElement('div');
+    dialog.className = 'blank-picker-dialog';
+
+    const title = document.createElement('div');
+    title.className = 'blank-picker-title';
+    title.textContent = 'Assign Letter';
+    dialog.appendChild(title);
+
+    const subtitle = document.createElement('div');
+    subtitle.className = 'blank-picker-subtitle';
+    subtitle.textContent = 'What letter should this blank tile represent?';
+    dialog.appendChild(subtitle);
+
+    const grid = document.createElement('div');
+    grid.className = 'blank-picker-grid';
+
+    for (let i = 0; i < 26; i++) {
+      const letter = String.fromCharCode(65 + i);
+      const btn = document.createElement('button');
+      btn.className = 'blank-picker-btn';
+      btn.textContent = letter;
+      btn.addEventListener('click', () => {
+        this.game.assignBlankLetter(tileId, letter);
+        this.save();
+        overlay.remove();
+        this.render();
+      });
+      grid.appendChild(btn);
+    }
+
+    dialog.appendChild(grid);
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'btn btn-secondary blank-picker-cancel';
+    cancelBtn.textContent = 'Cancel (return tile to rack)';
+    cancelBtn.addEventListener('click', () => {
+      const pending = this.game.getPendingTiles();
+      for (const p of pending) {
+        if (p.id === tileId) {
+          this.game.removeTile(p.row, p.col);
+          break;
+        }
+      }
+      overlay.remove();
+      this.save();
+      this.render();
+    });
+    dialog.appendChild(cancelBtn);
+
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
   }
 
   // ─── Helpers ─────────────────────────────────────────

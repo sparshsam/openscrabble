@@ -365,6 +365,81 @@ body {
 .message-area.error { color: var(--invalid-color); background: #fce8e8; border: 1.5px solid #e8a0a0; }
 
 /* ══════════════════════════════════════════════════════
+   BLANK TILE LETTER PICKER
+   ══════════════════════════════════════════════════════ */
+
+.blank-picker-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 16px;
+}
+
+.blank-picker-dialog {
+  background: var(--bg);
+  border: 2px solid var(--board-border);
+  border-radius: 12px;
+  padding: 20px;
+  max-width: 340px;
+  width: 100%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  text-align: center;
+}
+
+.blank-picker-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.blank-picker-subtitle {
+  font-size: 0.8rem;
+  color: var(--text-light);
+  margin-bottom: 14px;
+}
+
+.blank-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.blank-picker-btn {
+  padding: 10px 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  border: 1.5px solid var(--board-border);
+  border-radius: 6px;
+  background: var(--tile-bg);
+  color: var(--tile-text);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.1s, transform 0.1s;
+  touch-action: manipulation;
+}
+
+.blank-picker-btn:active {
+  background: var(--accent-light);
+  transform: scale(0.92);
+}
+
+.blank-picker-cancel {
+  width: 100%;
+  font-size: 0.78rem;
+}
+
+@media (hover: hover) {
+  .blank-picker-btn:hover {
+    background: var(--accent-light);
+  }
+}
+
+/* ══════════════════════════════════════════════════════
    DESKTOP ADAPTATIONS
    ══════════════════════════════════════════════════════ */
 

@@ -3,6 +3,8 @@
  * New Game, Continue Game (if saved), How to Play, Settings.
  */
 
+import pkg from '../../package.json';
+
 export interface HomeConfig {
   player1Name: string;
   player2Name: string;
@@ -216,7 +218,7 @@ export class HomePage {
   private createFooter(): HTMLElement {
     const footer = document.createElement('div');
     footer.className = 'home-footer';
-    footer.innerHTML = 'v0.1.4 — <a href="https://github.com/sparshsam/openscrabble" target="_blank" rel="noopener">GitHub</a>';
+    footer.innerHTML = `v${pkg.version} — <a href="https://github.com/sparshsam/openscrabble" target="_blank" rel="noopener">GitHub</a>`;
     return footer;
   }
 }

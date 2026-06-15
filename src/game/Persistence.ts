@@ -74,18 +74,33 @@ export class GamePersistence {
     const toKeep = allBagTiles.filter((t) => !allInPlayIds.has(t.id));
     game.bag.returnTiles(toKeep.map((t) => t.id));
 
-    // Restore player state
+    // Restore player state with sorted racks
+    const sortRack = (r: (import('../types.js').Tile | null)[]) => {
+      const tiles = r.filter((t): t is import('../types.js').Tile => t !== null);
+      tiles.sort((a, b) => {
+        const aLetter = (a.playedAs || a.letter || '').toLowerCase();
+        const bLetter = (b.playedAs || b.letter || '').toLowerCase();
+        if (!aLetter && !bLetter) return 0;
+        if (!aLetter) return 1;
+        if (!bLetter) return -1;
+        return aLetter.localeCompare(bLetter);
+      });
+      const result: (import('../types.js').Tile | null)[] = [...tiles];
+      while (result.length < 7) result.push(null);
+      return result;
+    };
+
     game.players = [
       {
         name: state.players[0]!.name,
         score: state.players[0]!.score,
-        rack: state.players[0]!.rack.map((t) => (t ? { ...t } : null)),
+        rack: sortRack(state.players[0]!.rack.map((t) => (t ? { ...t } : null))),
         isActive: state.currentPlayerIndex === 0,
       },
       {
         name: state.players[1]!.name,
         score: state.players[1]!.score,
-        rack: state.players[1]!.rack.map((t) => (t ? { ...t } : null)),
+        rack: sortRack(state.players[1]!.rack.map((t) => (t ? { ...t } : null))),
         isActive: state.currentPlayerIndex === 1,
       },
     ];

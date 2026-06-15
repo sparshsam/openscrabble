@@ -37,7 +37,18 @@ export class ScoreCalculator {
     return totalScore;
   }
 
-  private static scoreWord(word: WordResult, premiumUsed: (row: number, col: number) => boolean): number {
+  /**
+   * Score each word individually and return them with per-word scores.
+   * Does NOT apply bingo — use calculate() for the total including bingo.
+   */
+  static scoreWordsWithDetails(words: WordResult[], premiumUsed: (row: number, col: number) => boolean): WordResult[] {
+    return words.map((w) => ({
+      ...w,
+      score: this.scoreWord(w, premiumUsed),
+    }));
+  }
+
+  static scoreWord(word: WordResult, premiumUsed: (row: number, col: number) => boolean): number {
     let letterSum = 0;
     let wordMultiplier = 1;
 
