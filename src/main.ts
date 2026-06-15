@@ -2,6 +2,7 @@ import './ui/styles.css';
 import { HomePage } from './ui/HomePage.js';
 import { GameUI } from './ui/GameUI.js';
 import { GamePersistence } from './game/Persistence.js';
+import { loadWordSet, isWordSetLoaded } from './game/DictionaryLoader.js';
 
 type Screen = 'home' | 'game';
 
@@ -15,6 +16,10 @@ function init(): void {
   let currentComponent: HomePage | GameUI | null = null;
 
   function showHome(): void {
+    // Preload dictionary in background while user is on home page
+    if (!isWordSetLoaded()) {
+      loadWordSet();
+    }
     const hasSaved = GamePersistence.hasSavedGame();
     const home = new HomePage(
       root!,
@@ -41,6 +46,10 @@ function init(): void {
   }
 
   function showGame(p1: string, p2: string): void {
+    // Kick off dictionary load in background
+    if (!isWordSetLoaded()) {
+      loadWordSet();
+    }
     const gameUI = new GameUI(root!, undefined, () => {
       showHome();
     });
@@ -48,6 +57,10 @@ function init(): void {
   }
 
   function showGameFrom(game: import('./game/Game.js').Game): void {
+    // Kick off dictionary load in background
+    if (!isWordSetLoaded()) {
+      loadWordSet();
+    }
     const gameUI = new GameUI(root!, game, () => {
       showHome();
     });

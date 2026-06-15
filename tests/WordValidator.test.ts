@@ -1,8 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { WordValidator } from '../src/game/WordValidator.js';
 import { WORD_SET } from '../src/data/wordList.js';
+import { loadWordSet, isWordSetLoaded } from '../src/game/DictionaryLoader.js';
 
 describe('WordValidator', () => {
+  beforeAll(async () => {
+    if (!isWordSetLoaded()) {
+      await loadWordSet();
+    }
+  });
   it('recognizes valid words', () => {
     expect(WordValidator.isValid('cat')).toBe(true);
     expect(WordValidator.isValid('dog')).toBe(true);

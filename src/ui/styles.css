@@ -713,6 +713,24 @@ body {
   border: 1.5px solid var(--valid-border);
 }
 
+.preview-word {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+  transition: opacity 0.1s;
+}
+
+.preview-word:active {
+  opacity: 0.6;
+}
+
+@media (hover: hover) {
+  .preview-word:hover {
+    color: var(--accent);
+  }
+}
+
 .preview-invalid {
   color: var(--invalid-color);
   background: var(--invalid-bg);

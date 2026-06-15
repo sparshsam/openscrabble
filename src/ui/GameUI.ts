@@ -2,6 +2,37 @@ import type { GameState, PlacedTile, Tile, WordResult } from '../types.js';
 import { Game } from '../game/Game.js';
 import { GamePersistence } from '../game/Persistence.js';
 import { getPremiumType } from '../game/Board.js';
+import { type WordDefinition, fetchDefinition } from '../game/WordDefinitions.js';
+import { WordValidator } from '../game/WordValidator.js';
+
+/**
+ * Add a hold/long-press listener to an element.
+ * Fires the callback when the element is held for 500ms.
+ */
+function addHoldListener(el: HTMLElement, callback: () => void): void {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let triggered = false;
+
+  el.addEventListener('pointerdown', () => {
+    triggered = false;
+    timer = setTimeout(() => {
+      triggered = true;
+      callback();
+    }, 500);
+  });
+
+  el.addEventListener('pointerup', () => {
+    if (timer) clearTimeout(timer);
+  });
+
+  el.addEventListener('pointerleave', () => {
+    if (timer) clearTimeout(timer);
+  });
+
+  el.addEventListener('pointercancel', () => {
+    if (timer) clearTimeout(timer);
+  });
+}
 
 /** What tile the player has currently selected for tap-to-place. */
 interface Selection {
@@ -390,10 +421,24 @@ export class GameUI {
 
     if (preview.valid) {
       bar.classList.add('preview-valid');
-      const wordsDisplay = preview.words.map((w) => `"${w.word}" (+${w.score})`).join(', ');
+      const wordSpans = preview.words.map((w) => {
+        const span = document.createElement('span');
+        span.className = 'preview-word';
+        span.textContent = `"${w.word}" (+${w.score})`;
+        span.addEventListener('click', () => this.showWordDetails(w.word));
+        // Long-press / tap-hold
+        addHoldListener(span, () => this.showWordDetails(w.word));
+        return span;
+      });
+      for (let i = 0; i < wordSpans.length; i++) {
+        if (i > 0) bar.appendChild(document.createTextNode(', '));
+        bar.appendChild(wordSpans[i]!);
+      }
       const pendingCount = this.game.getPendingTiles().length;
       const bingoNote = pendingCount >= 7 ? ' 🎉 Bingo!' : '';
-      bar.textContent = `${wordsDisplay} → ${preview.totalScore} pts${bingoNote}`;
+      const totalSpan = document.createElement('span');
+      totalSpan.textContent = ` → ${preview.totalScore} pts${bingoNote}`;
+      bar.appendChild(totalSpan);
     } else {
       bar.classList.add('preview-invalid');
       bar.innerHTML = `✕ ${this.esc(preview.error ?? 'Invalid move')}`;
@@ -558,6 +603,87 @@ export class GameUI {
       msgEl.className = 'message-area';
       msgEl.textContent = '';
     }, 6000);
+  }
+
+  // ─── Word Details ────────────────────────────────────
+
+  private showWordDetails(word: string): void {
+    // Remove existing word details overlay
+    const old = document.getElementById('word-details-overlay');
+    if (old) old.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'word-details-overlay';
+    overlay.className = 'blank-picker-overlay';
+
+    const dialog = document.createElement('div');
+    dialog.className = 'blank-picker-dialog';
+    dialog.style.textAlign = 'left';
+
+    const title = document.createElement('div');
+    title.className = 'blank-picker-title';
+    title.textContent = word.toUpperCase();
+    dialog.appendChild(title);
+
+    const isValid = WordValidator.isValid(word);
+    const validBadge = document.createElement('div');
+    validBadge.style.cssText = `display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.7rem;font-weight:600;margin:4px 0 10px;${
+      isValid ? 'color:#2d7a3a;background:#e4f3e4' : 'color:#b32d2d;background:#fce8e8'
+    }`;
+    validBadge.textContent = isValid ? '✓ Valid word' : '✕ Not in dictionary';
+    dialog.appendChild(validBadge);
+
+    const content = document.createElement('div');
+    content.className = 'blank-picker-subtitle';
+    content.style.cssText = 'margin-bottom:0;';
+
+    if (isValid) {
+      content.textContent = 'Loading definition…';
+      dialog.appendChild(content);
+
+      fetchDefinition(word).then((def) => {
+        if (!def || def.meanings.length === 0) {
+          content.textContent = 'Definition not available for this word.';
+          return;
+        }
+        content.innerHTML = '';
+        for (const m of def.meanings) {
+          const item = document.createElement('div');
+          item.style.cssText = 'margin-bottom:8px;font-size:0.82rem;line-height:1.4;';
+          const pos = document.createElement('span');
+          pos.style.cssText = 'font-weight:600;color:var(--accent);font-size:0.7rem;text-transform:uppercase;';
+          pos.textContent = m.partOfSpeech;
+          item.appendChild(pos);
+          const defText = document.createElement('div');
+          defText.textContent = m.definition;
+          item.appendChild(defText);
+          if (m.example) {
+            const ex = document.createElement('div');
+            ex.style.cssText = 'font-style:italic;color:var(--text-tertiary);font-size:0.75rem;margin-top:2px;';
+            ex.textContent = `"${m.example}"`;
+            item.appendChild(ex);
+          }
+          content.appendChild(item);
+        }
+      });
+    } else {
+      content.textContent = 'This word is not in the dictionary. Check spelling or try a different word.';
+      dialog.appendChild(content);
+    }
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'btn btn-secondary blank-picker-cancel';
+    closeBtn.style.marginTop = '14px';
+    closeBtn.textContent = 'Close';
+    closeBtn.addEventListener('click', () => overlay.remove());
+    dialog.appendChild(closeBtn);
+
+    overlay.appendChild(dialog);
+    // Click overlay background to close
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) overlay.remove();
+    });
+    document.body.appendChild(overlay);
   }
 
   // ─── Blank Tile Letter Picker ────────────────────────

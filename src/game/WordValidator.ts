@@ -1,9 +1,8 @@
-import { WORD_SET } from '../data/wordList.js';
+import { getCachedWordSet } from './DictionaryLoader.js';
 
 /**
  * Official Scrabble 2-letter word list (TWL/NASPA standard).
- * The main WORD_SET may contain spurious 2-letter abbreviations,
- * so any 2-letter word must pass this explicit check.
+ * Always available — no lazy loading needed.
  */
 const OFFICIAL_TWO_LETTER = new Set([
   'aa','ab','ad','ae','ag','ah','ai','al','am','an','ar','as','at','aw','ax','ay',
@@ -35,16 +34,15 @@ const OFFICIAL_TWO_LETTER = new Set([
 
 /**
  * Validates words against the built-in word list.
- * Pure function — no side effects, fully testable.
- *
- * For 2-letter words, validates against the official Scrabble list.
- * Longer words are checked against the full dictionary WORD_SET.
+ * 2-letter words are validated immediately against the official list.
+ * Longer words require the full dictionary to be loaded (via DictionaryLoader).
  */
 export class WordValidator {
   /**
    * Check if a single word is valid.
    * Words are normalized to lowercase for lookup.
    * 2-letter words must be in the official Scrabble list.
+   * Longer words check the loaded dictionary set.
    */
   static isValid(word: string): boolean {
     const normalized = word.toLowerCase().replace(/[^a-z]/g, '');
@@ -53,11 +51,14 @@ export class WordValidator {
     if (normalized.length === 2) {
       return OFFICIAL_TWO_LETTER.has(normalized);
     }
-    return WORD_SET.has(normalized);
+    // Longer words: check cached dictionary set (may return false if not yet loaded)
+    const wordSet = getCachedWordSet();
+    if (!wordSet) return false;
+    return wordSet.has(normalized);
   }
 
   /**
-   * Validate multiple words and return only the invalid ones with details.
+   * Validate multiple words and return only the invalid ones.
    */
   static findInvalid(words: string[]): { word: string; index: number }[] {
     const invalid: { word: string; index: number }[] = [];
@@ -78,9 +79,10 @@ export class WordValidator {
   }
 
   /**
-   * Get the total word count in the dictionary.
+   * Get the total word count in the dictionary (0 if not yet loaded).
    */
   static getDictionarySize(): number {
-    return WORD_SET.size;
+    const wordSet = getCachedWordSet();
+    return wordSet?.size ?? 0;
   }
 }
