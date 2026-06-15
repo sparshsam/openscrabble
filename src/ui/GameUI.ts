@@ -216,6 +216,21 @@ export class GameUI {
       badge.className = 'tile-points';
       badge.textContent = String(tile.points);
       cell.appendChild(badge);
+
+      // × remove button on selected pending tile
+      if (isPending && this.selectedTile?.tileId === tile.id && this.selectedTile.source === 'board') {
+        const removeBtn = document.createElement('span');
+        removeBtn.className = 'tile-remove-btn';
+        removeBtn.textContent = '×';
+        removeBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.game.removeTile(row, col);
+          this.selectedTile = null;
+          this.save();
+          this.render();
+        });
+        cell.appendChild(removeBtn);
+      }
     }
 
     // ── Click / Tap handler ──────────────────────────
@@ -437,7 +452,7 @@ export class GameUI {
 
       const clearBtn = document.createElement('button');
       clearBtn.className = 'btn btn-secondary';
-      clearBtn.textContent = 'Clear';
+      clearBtn.textContent = 'Clear All';
       clearBtn.disabled = pendingCount === 0;
       clearBtn.addEventListener('click', () => {
         this.game.clearPending();
@@ -446,6 +461,18 @@ export class GameUI {
         this.render();
       });
       actions.appendChild(clearBtn);
+
+      const undoBtn = document.createElement('button');
+      undoBtn.className = 'btn';
+      undoBtn.textContent = 'Undo Last';
+      undoBtn.disabled = pendingCount === 0;
+      undoBtn.addEventListener('click', () => {
+        this.game.undoLastPendingTile();
+        this.selectedTile = null;
+        this.save();
+        this.render();
+      });
+      actions.appendChild(undoBtn);
 
       const passBtn = document.createElement('button');
       passBtn.className = 'btn';

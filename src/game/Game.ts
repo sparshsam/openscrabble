@@ -143,6 +143,17 @@ export class Game {
     return true;
   }
 
+  /** Return the most recently placed pending tile to the rack */
+  undoLastPendingTile(): boolean {
+    if (this.phase !== 'placing') return false;
+    if (this.pendingTiles.size === 0) return false;
+    // Map preserves insertion order — get the last entry
+    const entries = [...this.pendingTiles.entries()];
+    const [tileId, placed] = entries[entries.length - 1]!;
+    // Use existing removeTile logic with the tile's position
+    return this.removeTile(placed.row, placed.col);
+  }
+
   /** Assign a letter to a pending blank tile */
   assignBlankLetter(tileId: string, letter: string): boolean {
     if (this.phase !== 'placing') return false;
