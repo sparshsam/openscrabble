@@ -288,6 +288,15 @@ export class Board {
       }
     }
   }
+
+  /** Reset all premium-used flags (for undo) */
+  clearPremiumUsed(): void {
+    for (let r = 0; r < BOARD_SIZE; r++) {
+      for (let c = 0; c < BOARD_SIZE; c++) {
+        this.premiumUsed[r]![c] = false;
+      }
+    }
+  }
 }
 
 export { BOARD_SIZE };

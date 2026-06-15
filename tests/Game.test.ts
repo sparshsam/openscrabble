@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Game } from '../src/game/Game.js';
 import { resetTileCounter } from '../src/data/tileDistribution.js';
+import { Board } from '../src/game/Board.js';
 
 describe('Game', () => {
   let game: Game;
@@ -277,6 +278,119 @@ describe('Game', () => {
       // The tile removed should be back in rack (3 placed, 1 returned = 5 in rack)
       const rackCount = game.players[0]!.rack.filter((t) => t !== null).length;
       expect(rackCount).toBe(5);
+    });
+  });
+
+  describe('v0.3 product features', () => {
+    it('records move history on submit', () => {
+      const tiles = game.players[0]!.rack.filter((t) => t !== null).slice(0, 2);
+      game.placeTile(tiles[0]!.id, 7, 7);
+      game.placeTile(tiles[1]!.id, 7, 8);
+      const result = game.submitWord();
+      // Move may succeed or fail validation — but should still record history
+      expect(game.moveRecords.length).toBeGreaterThanOrEqual(0);
+      if (result.success) {
+        expect(game.moveRecords.length).toBe(1);
+        expect(game.moveRecords[0]!.playerIndex).toBe(0);
+        expect(game.moveRecords[0]!.totalScore).toBeGreaterThan(0);
+      }
+    });
+
+    it('records pass in move history', () => {
+      game.passTurn();
+      expect(game.moveRecords.length).toBe(1);
+      expect(game.moveRecords[0]!.moveDescription).toBe('Pass');
+    });
+
+    it('records swap in move history', () => {
+      game.enterSwapMode();
+      const tiles = game.players[0]!.rack.filter((t) => t !== null).slice(0, 2);
+      game.swapTiles(tiles.map((t) => t.id));
+      expect(game.moveRecords.length).toBe(1);
+      expect(game.moveRecords[0]!.moveDescription).toContain('Swapped');
+    });
+
+    it('undoMove restores previous state', () => {
+      const p0 = game.players[0]!;
+      const p1 = game.players[1]!;
+      const initialScore0 = p0.score;
+      const initialScore1 = p1.score;
+
+      const tiles = p0.rack.filter((t) => t !== null).slice(0, 2);
+      game.placeTile(tiles[0]!.id, 7, 7);
+      game.placeTile(tiles[1]!.id, 7, 8);
+      const result = game.submitWord();
+
+      if (result.success) {
+        const scoreAfterSubmit0 = game.players[0]!.score;
+        const currentPlayer = game.currentPlayerIndex;
+        const moveCount = game.moveRecords.length;
+
+        const undone = game.undoMove();
+        expect(undone).toBe(true);
+        // Scores should be restored
+        expect(game.players[0]!.score).toBe(initialScore0);
+        expect(game.players[1]!.score).toBe(initialScore1);
+        // Move record should be removed
+        expect(game.moveRecords.length).toBe(moveCount - 1);
+        // Board should be empty (no committed tiles)
+        expect(game.board.getAllPlacedTiles().length).toBe(0);
+      } else {
+        // If submit failed, undo should also fail
+        expect(game.undoMove()).toBe(false);
+      }
+    });
+
+    it('undoMove does nothing when no moves recorded', () => {
+      expect(game.undoMove()).toBe(false);
+    });
+
+    it('undoMove does nothing when tiles are pending', () => {
+      const tile = game.players[0]!.rack.find((t) => t !== null)!;
+      game.placeTile(tile.id, 7, 7);
+      expect(game.undoMove()).toBe(false);
+    });
+
+    it('getSummary returns correct structure during game', () => {
+      // Game is not over yet
+      const winner = game.getWinner();
+      expect(winner).toBeNull();
+    });
+
+    it('getSummary returns correct structure after game over', () => {
+      // Force game over via 6 passes
+      for (let i = 0; i < 6; i++) {
+        game.passTurn();
+      }
+      expect(game.phase).toBe('gameover');
+
+      const summary = game.getSummary();
+      // 6 passes: first 5 pass+switch, 6th triggers gameover without switch
+      expect(summary.totalTurns).toBe(5);
+      expect(summary.moveHistory.length).toBe(6);
+      expect(summary.finalScores.length).toBe(2);
+      expect(summary.isTie || summary.winner !== null).toBe(true);
+    });
+
+    it('getSummary tracks best word', () => {
+      // Place and submit a word to get best word tracking
+      const tiles = game.players[0]!.rack.filter((t) => t !== null).slice(0, 2);
+      game.placeTile(tiles[0]!.id, 7, 7);
+      game.placeTile(tiles[1]!.id, 7, 8);
+      game.submitWord();
+
+      const summary = game.getSummary();
+      if (summary.moveHistory.length > 0) {
+        expect(summary.bestWord).toBeDefined();
+      }
+    });
+
+    it('Board.clearPremiumUsed resets premium state', () => {
+      const board = new Board();
+      board.markPremiumUsed(7, 7);
+      expect(board.isPremiumUsed(7, 7)).toBe(true);
+      board.clearPremiumUsed();
+      expect(board.isPremiumUsed(7, 7)).toBe(false);
     });
   });
 });

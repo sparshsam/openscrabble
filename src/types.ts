@@ -35,6 +35,27 @@ export interface WordResult {
   word: string;
 }
 
+/** Detailed record of a completed move */
+export interface MoveRecord {
+  turnNumber: number;
+  playerIndex: number;
+  playerName: string;
+  words: WordResult[];
+  totalScore: number;
+  cumulativeScore: number;
+  moveDescription: string; // e.g., "TRADE + CROSS → 24 pts"
+}
+
+/** Post-game statistics */
+export interface GameSummary {
+  winner: Player | null;
+  isTie: boolean;
+  totalTurns: number;
+  moveHistory: MoveRecord[];
+  bestWord: { word: string; score: number } | null;
+  finalScores: [number, number];
+}
+
 /** Turn action */
 export type TurnAction =
   | { type: 'place'; tiles: PlacedTile[] }

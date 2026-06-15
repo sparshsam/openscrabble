@@ -1,4 +1,4 @@
-import type { Tile, PlacedTile, Player, GameState, GamePhase, TurnAction, WordResult } from '../types.js';
+import type { Tile, PlacedTile, Player, GameState, GamePhase, TurnAction, WordResult, MoveRecord, GameSummary } from '../types.js';
 import { Board, CENTER, getPremiumType } from './Board.js';
 import { Bag } from './Bag.js';
 import { ScoreCalculator } from './ScoreCalculator.js';
@@ -9,6 +9,7 @@ const RACK_SIZE = 7;
 /**
  * Core game engine for OpenScrabble.
  * Manages turns, tile placement, scoring, and game state.
+ * v0.3.0: Enhanced move history, undo support, game summary.
  */
 export class Game {
   readonly board: Board;
@@ -19,8 +20,10 @@ export class Game {
   turnNumber: number = 1;
   consecutivePasses: number = 0;
   moveHistory: TurnAction[] = [];
+  moveRecords: MoveRecord[] = [];
   swapMode: boolean = false;
-  private pendingTiles: Map<string, PlacedTile> = new Map(); // tileId -> placement
+  private pendingTiles: Map<string, PlacedTile> = new Map();
+  private stateSnapshots: string[] = [];
 
   constructor(player1Name: string = 'Player 1', player2Name: string = 'Player 2') {
     this.board = new Board();
@@ -48,31 +51,23 @@ export class Game {
   /** Fill a rack to RACK_SIZE from the bag */
   private fillRack(rack: (Tile | null)[]): (Tile | null)[] {
     const result = [...rack];
-    // Ensure result has exactly RACK_SIZE slots
-    while (result.length < RACK_SIZE) {
-      result.push(null);
-    }
+    while (result.length < RACK_SIZE) result.push(null);
     const emptySlots = result.filter((t) => t === null).length;
     if (emptySlots <= 0) return this.sortRack(result);
-
     const drawn = this.bag.draw(emptySlots);
     let drawIdx = 0;
     for (let i = 0; i < result.length && drawIdx < drawn.length; i++) {
-      if (result[i] === null) {
-        result[i] = drawn[drawIdx++]!;
-      }
+      if (result[i] === null) result[i] = drawn[drawIdx++]!;
     }
     return this.sortRack(result);
   }
 
-  /** Sort a rack array alphabetically by letter (blanks at end, tiles with playedAs sorted by letter) */
   private sortRack(rack: (Tile | null)[]): (Tile | null)[] {
     const tiles = rack.filter((t): t is Tile => t !== null);
     const nulls = rack.filter((t) => t === null);
     tiles.sort((a, b) => {
       const aLetter = (a.playedAs || a.letter || '').toLowerCase();
       const bLetter = (b.playedAs || b.letter || '').toLowerCase();
-      // Blanks with no letter assigned go last
       if (!aLetter && !bLetter) return 0;
       if (!aLetter) return 1;
       if (!bLetter) return -1;
@@ -81,13 +76,13 @@ export class Game {
     return [...tiles, ...nulls];
   }
 
-  /** Place a tile from the rack onto the board (pending). Removes from rack immediately. */
+  // ─── Pending tile management ───────────────────────────
+
   placeTile(tileId: string, row: number, col: number): boolean {
     if (this.phase !== 'placing') return false;
     if (this.board.isOccupied(row, col)) return false;
     if (!this.board.isInBounds(row, col)) return false;
 
-    // If tile is already pending elsewhere, move it (no rack change)
     if (this.pendingTiles.has(tileId)) {
       const existing = this.pendingTiles.get(tileId)!;
       this.board.removeTile(existing.row, existing.col);
@@ -100,61 +95,48 @@ export class Game {
     if (rackIdx === -1) return false;
 
     const rackTile = this.currentPlayer.rack[rackIdx]!;
-    // Remove from rack immediately
     this.currentPlayer.rack[rackIdx] = null;
-
     this.board.placeTile({ ...rackTile }, row, col);
     this.pendingTiles.set(tileId, { ...rackTile, row, col });
     return true;
   }
 
-  /** Remove a pending tile from the board back to the rack */
   removeTile(row: number, col: number): boolean {
     if (this.phase !== 'placing') return false;
-
     for (const [tileId, placed] of this.pendingTiles) {
       if (placed.row === row && placed.col === col) {
         this.board.removeTile(row, col);
         this.pendingTiles.delete(tileId);
-        // Restore tile to rack and re-sort
         this.currentPlayer.rack = this.currentPlayer.rack.filter((t) => t !== null);
         this.currentPlayer.rack.push({ letter: placed.letter, points: placed.points, id: placed.id, isBlank: placed.isBlank, playedAs: placed.playedAs });
         this.currentPlayer.rack = this.sortRack(this.currentPlayer.rack);
-        while (this.currentPlayer.rack.length < RACK_SIZE) {
-          this.currentPlayer.rack.push(null);
-        }
+        while (this.currentPlayer.rack.length < RACK_SIZE) this.currentPlayer.rack.push(null);
         return true;
       }
     }
     return false;
   }
 
-  /** Move a pending tile to a new position */
   movePendingTile(tileId: string, newRow: number, newCol: number): boolean {
     if (this.phase !== 'placing') return false;
     const existing = this.pendingTiles.get(tileId);
     if (!existing) return false;
     if (this.board.isOccupied(newRow, newCol)) return false;
     if (!this.board.isInBounds(newRow, newCol)) return false;
-
     this.board.removeTile(existing.row, existing.col);
     this.board.placeTile({ ...existing }, newRow, newCol);
     this.pendingTiles.set(tileId, { ...existing, row: newRow, col: newCol });
     return true;
   }
 
-  /** Return the most recently placed pending tile to the rack */
   undoLastPendingTile(): boolean {
     if (this.phase !== 'placing') return false;
     if (this.pendingTiles.size === 0) return false;
-    // Map preserves insertion order — get the last entry
     const entries = [...this.pendingTiles.entries()];
-    const [tileId, placed] = entries[entries.length - 1]!;
-    // Use existing removeTile logic with the tile's position
+    const [, placed] = entries[entries.length - 1]!;
     return this.removeTile(placed.row, placed.col);
   }
 
-  /** Assign a letter to a pending blank tile */
   assignBlankLetter(tileId: string, letter: string): boolean {
     if (this.phase !== 'placing') return false;
     if (letter.length !== 1 || !/^[A-Z]$/i.test(letter)) return false;
@@ -162,41 +144,101 @@ export class Game {
     if (!pending) return false;
     const upper = letter.toUpperCase();
     pending.playedAs = upper;
-    pending.letter = upper; // so word formation uses the letter
-    // Update on board too
+    pending.letter = upper;
     this.board.removeTile(pending.row, pending.col);
     this.board.placeTile({ ...pending }, pending.row, pending.col);
     this.pendingTiles.set(tileId, { ...pending });
     return true;
   }
 
-  /** Check if a pending tile is a blank that needs a letter assigned */
   isPendingBlank(tileId: string): boolean {
     const pending = this.pendingTiles.get(tileId);
     return !!pending && !!pending.isBlank && !pending.playedAs;
   }
 
-  /** Get all pending placed tiles */
   getPendingTiles(): PlacedTile[] {
     return [...this.pendingTiles.values()];
   }
 
-  /** Clear all pending placements and restore tiles to rack */
   clearPending(): void {
     for (const placed of this.pendingTiles.values()) {
       this.board.removeTile(placed.row, placed.col);
-      // Add tile back to rack
       this.currentPlayer.rack.push({ letter: placed.letter, points: placed.points, id: placed.id, isBlank: placed.isBlank, playedAs: placed.playedAs });
     }
     this.pendingTiles.clear();
-    // Sort rack and pad to RACK_SIZE
     this.currentPlayer.rack = this.sortRack(this.currentPlayer.rack);
-    while (this.currentPlayer.rack.length < RACK_SIZE) {
-      this.currentPlayer.rack.push(null);
+    while (this.currentPlayer.rack.length < RACK_SIZE) this.currentPlayer.rack.push(null);
+  }
+
+  // ─── Submit ────────────────────────────────────────────
+
+  /** Save a snapshot before committing a move (for undo) */
+  private saveSnapshot(): void {
+    // Get the current state, then modify it to represent the pre-placement state
+    // (pending tiles are on the board but should be back in the rack for undo)
+    const grid = this.board.getGrid();
+    const rack = [...this.currentPlayer.rack];
+
+    // Remove pending tiles from the board copy
+    for (const placed of this.pendingTiles.values()) {
+      grid[placed.row]![placed.col] = null;
+    }
+
+    // Add pending tiles back to rack copy (simulating pre-placement state)
+    const restoredTiles = [...this.pendingTiles.values()].map((t) => ({
+      letter: t.letter, points: t.points, id: t.id,
+      isBlank: t.isBlank, playedAs: t.playedAs,
+    }));
+    const rackWithout = rack.filter((t): t is Tile => t !== null);
+    const combined = [...rackWithout, ...restoredTiles];
+    combined.sort((a, b) => {
+      const aL = (a.playedAs || a.letter || '').toLowerCase();
+      const bL = (b.playedAs || b.letter || '').toLowerCase();
+      if (!aL && !bL) return 0;
+      if (!aL) return 1;
+      if (!bL) return -1;
+      return aL.localeCompare(bL);
+    });
+    const fullRack: (Tile | null)[] = [...combined];
+    while (fullRack.length < 7) fullRack.push(null);
+
+    // Build snapshot state
+    const state: GameState = {
+      board: grid,
+      players: [
+        {
+          ...this.players[0]!,
+          rack: this.currentPlayerIndex === 0 ? fullRack : [...this.players[0]!.rack],
+        },
+        {
+          ...this.players[1]!,
+          rack: this.currentPlayerIndex === 1 ? fullRack : [...this.players[1]!.rack],
+        },
+      ],
+      currentPlayerIndex: this.currentPlayerIndex,
+      bag: this.bag.getRemainingIds(),
+      phase: this.phase,
+      turnNumber: this.turnNumber,
+      consecutivePasses: this.consecutivePasses,
+      moveHistory: [...this.moveHistory],
+      swapMode: this.swapMode,
+    };
+
+    // Include premiumUsed matrix
+    const premiumUsed: boolean[][] = [];
+    for (let r = 0; r < 15; r++) {
+      premiumUsed[r] = [];
+      for (let c = 0; c < 15; c++) {
+        premiumUsed[r]![c] = this.board.isPremiumUsed(r, c);
+      }
+    }
+    this.stateSnapshots.push(JSON.stringify({ state, premiumUsed }));
+    // Keep only last 10 snapshots to bound memory
+    if (this.stateSnapshots.length > 10) {
+      this.stateSnapshots.shift();
     }
   }
 
-  /** Submit the current word placement */
   submitWord(): { success: boolean; words: WordResult[]; totalScore: number; error?: string } {
     if (this.phase !== 'placing') {
       return { success: false, words: [], totalScore: 0, error: 'Not in placing phase' };
@@ -207,13 +249,9 @@ export class Game {
       return { success: false, words: [], totalScore: 0, error: 'No tiles placed' };
     }
 
-    // Validate placement rules
-    // Check for committed (non-pending) tiles — pending tiles are already on the board grid
     const hasCommittedTiles = this.board.getAllPlacedTiles().length > pending.length;
     const validationError = ScoreCalculator.validatePlacement(
-      pending,
-      hasCommittedTiles,
-      this.board.isCenterOccupied(),
+      pending, hasCommittedTiles, this.board.isCenterOccupied(),
       (r, c) => this.board.isInBounds(r, c),
       (r, c) => this.board.isOccupied(r, c)
     );
@@ -222,86 +260,95 @@ export class Game {
       return { success: false, words: [], totalScore: 0, error: validationError };
     }
 
-    // Find all formed words
     const words = this.board.findWords(pending);
-
     if (words.length === 0) {
-      // Return error but DO NOT clear pending — player needs to see what's wrong
       return { success: false, words: [], totalScore: 0, error: 'No words formed' };
     }
 
-    // Dictionary validation: reject the move if any word is invalid
     const wordStrings = words.map((w) => w.word);
     const invalidWords = WordValidator.findInvalid(wordStrings);
     if (invalidWords.length > 0) {
-      // Return error but DO NOT clear pending — player needs to see red feedback
       const badWord = invalidWords[0]!;
       return { success: false, words: [], totalScore: 0, error: `"${badWord.word}" is not a valid word` };
     }
 
-    // Calculate score
+    // Save snapshot BEFORE committing (for undo)
+    this.saveSnapshot();
+
     const totalScore = ScoreCalculator.calculate(
-      words,
-      pending.length,
+      words, pending.length,
       (r, c) => this.board.isPremiumUsed(r, c)
     );
 
-    // Mark premium squares as used
     for (const tile of pending) {
       if (getPremiumType(tile.row, tile.col)) {
         this.board.markPremiumUsed(tile.row, tile.col);
       }
     }
 
-    // Deduct tiles from rack
     for (const placed of pending) {
       const idx = this.currentPlayer.rack.findIndex((t) => t?.id === placed.id);
-      if (idx !== -1) {
-        this.currentPlayer.rack[idx] = null;
-      }
+      if (idx !== -1) this.currentPlayer.rack[idx] = null;
     }
 
-    // Add score
     this.currentPlayer.score += totalScore;
 
-    // Record move
+    // Get scored words for the record
+    const scoredWords = ScoreCalculator.scoreWordsWithDetails(words, (r, c) => true);
+
+    // Build detailed move record
+    const desc = scoredWords.map((w) => `"${w.word}"`).join(' + ');
+    const record: MoveRecord = {
+      turnNumber: this.turnNumber,
+      playerIndex: this.currentPlayerIndex,
+      playerName: this.currentPlayer.name,
+      words: scoredWords,
+      totalScore,
+      cumulativeScore: this.currentPlayer.score,
+      moveDescription: `${desc} → ${totalScore} pts`,
+    };
+    this.moveRecords.push(record);
+
     this.moveHistory.push({ type: 'place', tiles: pending });
-
-    // Draw new tiles
     this.currentPlayer.rack = this.fillRack(this.currentPlayer.rack);
-
-    // Clear pending
     this.pendingTiles.clear();
     this.consecutivePasses = 0;
 
-    // Check game over: bag empty AND one player has empty rack
     if (this.bag.isEmpty() && this.currentPlayer.rack.every((t) => t === null)) {
       this.phase = 'gameover';
       this.applyEndgameScoring();
     } else {
-      // Switch turn
       this.switchTurn();
     }
 
     return { success: true, words, totalScore };
   }
 
-  /** Pass the current turn */
+  // ─── Pass / Swap ───────────────────────────────────────
+
   passTurn(): void {
     if (this.phase !== 'placing') return;
     this.clearPending();
     this.consecutivePasses++;
 
+    this.moveHistory.push({ type: 'pass' });
+    this.moveRecords.push({
+      turnNumber: this.turnNumber,
+      playerIndex: this.currentPlayerIndex,
+      playerName: this.currentPlayer.name,
+      words: [],
+      totalScore: 0,
+      cumulativeScore: this.currentPlayer.score,
+      moveDescription: 'Pass',
+    });
+
     if (this.consecutivePasses >= 6) {
       this.phase = 'gameover';
       return;
     }
-
-    this.moveHistory.push({ type: 'pass' });
     this.switchTurn();
   }
 
-  /** Enter swap mode */
   enterSwapMode(): void {
     if (this.phase !== 'placing') return;
     if (this.bag.remainingCount === 0) return;
@@ -310,7 +357,6 @@ export class Game {
     this.phase = 'swap';
   }
 
-  /** Execute swap of selected tiles */
   swapTiles(tileIds: string[]): void {
     if (this.phase !== 'swap') return;
     if (tileIds.length === 0) {
@@ -323,19 +369,24 @@ export class Game {
     for (const id of tileIds) {
       const idx = this.currentPlayer.rack.findIndex((t) => t?.id === id);
       if (idx !== -1) {
-        const tile = this.currentPlayer.rack[idx]!;
-        tilesToSwap.push(tile);
+        tilesToSwap.push(this.currentPlayer.rack[idx]!);
         this.currentPlayer.rack[idx] = null;
       }
     }
 
-    // Return tiles to bag
     this.bag.returnTilesByTile(tilesToSwap);
-
-    // Draw new tiles
     this.currentPlayer.rack = this.fillRack(this.currentPlayer.rack);
 
     this.moveHistory.push({ type: 'swap', tiles: tileIds });
+    this.moveRecords.push({
+      turnNumber: this.turnNumber,
+      playerIndex: this.currentPlayerIndex,
+      playerName: this.currentPlayer.name,
+      words: [],
+      totalScore: 0,
+      cumulativeScore: this.currentPlayer.score,
+      moveDescription: `Swapped ${tileIds.length} tile(s)`,
+    });
 
     this.swapMode = false;
     this.phase = 'placing';
@@ -343,13 +394,11 @@ export class Game {
     this.switchTurn();
   }
 
-  /** Cancel swap mode */
   cancelSwap(): void {
     this.swapMode = false;
     this.phase = 'placing';
   }
 
-  /** Switch to the next player */
   private switchTurn(): void {
     this.currentPlayerIndex = 1 - this.currentPlayerIndex;
     this.players[0]!.isActive = this.currentPlayerIndex === 0;
@@ -357,20 +406,15 @@ export class Game {
     this.turnNumber++;
   }
 
-  /** Apply endgame scoring: remaining tile values deducted from loser's score */
   private applyEndgameScoring(): void {
-    // The player who went out gets the sum of opponent's remaining tiles added to their score
     const opponentRack = this.opponentPlayer.rack;
     const remainingPoints = opponentRack.reduce((sum, t) => sum + (t?.points ?? 0), 0);
     this.currentPlayer.score += remainingPoints;
     this.opponentPlayer.score -= remainingPoints;
   }
 
-  /**
-   * Preview the current pending placement without committing.
-   * Returns validation result, formed words, and score estimate.
-   * Checks placement rules AND dictionary validity.
-   */
+  // ─── Preview ───────────────────────────────────────────
+
   previewMove(): { valid: boolean; words: WordResult[]; totalScore: number; error?: string } {
     const pending = this.getPendingTiles();
     if (pending.length === 0) {
@@ -379,13 +423,10 @@ export class Game {
 
     const hasCommittedTiles = this.board.getAllPlacedTiles().length > pending.length;
     const validationError = ScoreCalculator.validatePlacement(
-      pending,
-      hasCommittedTiles,
-      this.board.isCenterOccupied(),
+      pending, hasCommittedTiles, this.board.isCenterOccupied(),
       (r, c) => this.board.isInBounds(r, c),
       (r, c) => this.board.isOccupied(r, c)
     );
-
     if (validationError) {
       return { valid: false, words: [], totalScore: 0, error: validationError };
     }
@@ -395,7 +436,6 @@ export class Game {
       return { valid: false, words: [], totalScore: 0, error: 'No words formed' };
     }
 
-    // Dictionary validation: check every formed word
     const wordStrings = words.map((w) => w.word);
     const invalid = WordValidator.findInvalid(wordStrings);
     if (invalid.length > 0) {
@@ -403,27 +443,139 @@ export class Game {
       return { valid: false, words: [], totalScore: 0, error: `"${badWord.word}" is not a valid word` };
     }
 
-    // Get per-word scores for display
     const scoredWords = ScoreCalculator.scoreWordsWithDetails(words, (r, c) => this.board.isPremiumUsed(r, c));
-
-    const totalScore = ScoreCalculator.calculate(
-      words,
-      pending.length,
-      (r, c) => this.board.isPremiumUsed(r, c)
-    );
+    const totalScore = ScoreCalculator.calculate(words, pending.length, (r, c) => this.board.isPremiumUsed(r, c));
 
     return { valid: true, words: scoredWords, totalScore };
   }
+
+  // ─── Undo ──────────────────────────────────────────────
+
+  /** Undo the last submitted move. Restores complete game state from snapshot. */
+  undoMove(): boolean {
+    if (this.phase === 'gameover') return false;
+    if (this.stateSnapshots.length === 0) return false;
+    if (this.pendingTiles.size > 0) return false; // can't undo while tiles are pending
+
+    const snapshot = this.stateSnapshots.pop()!;
+    this.restoreFromSnapshot(snapshot);
+    return true;
+  }
+
+  /** Restore full game state from a JSON snapshot */
+  private restoreFromSnapshot(snapshot: string): void {
+    const data = JSON.parse(snapshot) as { state: GameState; premiumUsed: boolean[][] };
+    const state = data.state;
+    const premiumUsed = data.premiumUsed;
+
+    // Restore board grid
+    this.board.loadGrid(state.board);
+
+    // Restore premium used matrix from snapshot
+    this.board.clearPremiumUsed();
+    if (premiumUsed) {
+      for (let r = 0; r < 15; r++) {
+        for (let c = 0; c < 15; c++) {
+          if (premiumUsed[r]?.[c]) {
+            this.board.markPremiumUsed(r, c);
+          }
+        }
+      }
+    }
+
+    // Restore player state
+    this.players = [
+      {
+        name: state.players[0]!.name,
+        score: state.players[0]!.score,
+        rack: state.players[0]!.rack.map((t) => (t ? { ...t } : null)),
+        isActive: state.currentPlayerIndex === 0,
+      },
+      {
+        name: state.players[1]!.name,
+        score: state.players[1]!.score,
+        rack: state.players[1]!.rack.map((t) => (t ? { ...t } : null)),
+        isActive: state.currentPlayerIndex === 1,
+      },
+    ];
+
+    this.currentPlayerIndex = state.currentPlayerIndex;
+    this.phase = 'placing';
+    this.turnNumber = state.turnNumber;
+    this.consecutivePasses = state.consecutivePasses;
+    this.swapMode = false;
+    this.pendingTiles.clear();
+
+    // Restore bag
+    const allInPlay: Tile[] = [];
+    for (const row of state.board) {
+      for (const t of row) { if (t) allInPlay.push(t); }
+    }
+    for (const p of state.players) {
+      for (const t of p.rack) { if (t) allInPlay.push(t); }
+    }
+    const inPlayIds = new Set(allInPlay.map((t) => t.id));
+    this.bag.reset();
+    const allBagTiles = this.bag.draw(100);
+    const toKeep = allBagTiles.filter((t) => !inPlayIds.has(t.id));
+    this.bag.returnTiles(toKeep.map((t) => t.id));
+
+    // Remove the last move record since we undid it
+    this.moveRecords.pop();
+    this.moveHistory.pop();
+
+    // Sort racks
+    for (let i = 0; i < 2; i++) {
+      const rack = this.players[i]!.rack.filter((t): t is Tile => t !== null);
+      rack.sort((a, b) => {
+        const aLetter = (a.playedAs || a.letter || '').toLowerCase();
+        const bLetter = (b.playedAs || b.letter || '').toLowerCase();
+        if (!aLetter && !bLetter) return 0;
+        if (!aLetter) return 1;
+        if (!bLetter) return -1;
+        return aLetter.localeCompare(bLetter);
+      });
+      const result: (Tile | null)[] = [...rack];
+      while (result.length < RACK_SIZE) result.push(null);
+      this.players[i]!.rack = result;
+    }
+  }
+
+  // ─── Game Summary ──────────────────────────────────────
 
   /** Get the winner (or null if tie / game not over) */
   getWinner(): Player | null {
     if (this.phase !== 'gameover') return null;
     if (this.currentPlayer.score > this.opponentPlayer.score) return this.currentPlayer;
     if (this.opponentPlayer.score > this.currentPlayer.score) return this.opponentPlayer;
-    return null; // tie
+    return null;
   }
 
-  /** Get a snapshot of the full game state */
+  /** Get full game summary */
+  getSummary(): GameSummary {
+    const winner = this.getWinner();
+    let bestWord: { word: string; score: number } | null = null;
+
+    for (const record of this.moveRecords) {
+      for (const w of record.words) {
+        if (!bestWord || w.score > bestWord.score) {
+          bestWord = { word: w.word, score: w.score };
+        }
+      }
+    }
+
+    return {
+      winner,
+      isTie: this.phase === 'gameover' && winner === null,
+      totalTurns: this.turnNumber - 1,
+      moveHistory: [...this.moveRecords],
+      bestWord,
+      finalScores: [this.players[0]!.score, this.players[1]!.score],
+    };
+  }
+
+  // ─── State ─────────────────────────────────────────────
+
   getState(): GameState {
     return {
       board: this.board.getGrid(),
@@ -441,7 +593,6 @@ export class Game {
     };
   }
 
-  /** Reset the game */
   reset(): void {
     const p1Name = this.players[0]!.name;
     const p2Name = this.players[1]!.name;
@@ -454,41 +605,34 @@ export class Game {
     this.turnNumber = 1;
     this.consecutivePasses = 0;
     this.moveHistory = [];
+    this.moveRecords = [];
+    this.stateSnapshots = [];
     this.swapMode = false;
     this.pendingTiles.clear();
   }
 
-  /**
-   * Serialize full game state for persistence.
-   */
   toJSON(): unknown {
     return this.getState();
   }
 
-  /**
-   * Restore game state from a plain object (from localStorage).
-   */
   static fromJSON(data: Record<string, unknown>): Game {
     const state = data as unknown as GameState;
     const game = new Game(state.players[0]!.name, state.players[1]!.name);
-    // Reconstruct board
     game.board.loadGrid(state.board);
-    // Reconstruct bag
+
     const allTiles: Tile[] = [];
     for (const row of state.board) {
-      for (const t of row) {
-        if (t) allTiles.push(t);
-      }
+      for (const t of row) { if (t) allTiles.push(t); }
     }
     for (const p of state.players) {
-      for (const t of p.rack) {
-        if (t) allTiles.push(t);
-      }
+      for (const t of p.rack) { if (t) allTiles.push(t); }
     }
-    // We need the bag's tile IDs; reconstruct from state.bag
+
     game.bag.reset();
-    // Set bag to correct remaining tiles
-    // This uses internal state manipulation; clean approach:
+    const allBagTiles = game.bag.draw(100);
+    const toKeep = allBagTiles.filter((t) => !allTiles.some((at) => at.id === t.id));
+    game.bag.returnTiles(toKeep.map((t) => t.id));
+
     game.players = state.players.map((p) => ({ ...p, rack: [...p.rack] })) as [Player, Player];
     game.currentPlayerIndex = state.currentPlayerIndex;
     game.phase = 'placing';

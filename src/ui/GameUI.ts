@@ -539,8 +539,39 @@ export class GameUI {
         this.render();
       });
       actions.appendChild(swapBtn);
+
+      // Undo submitted move (disabled if pending tiles exist or no moves recorded)
+      const canUndo = state.moveHistory.length > 0 && pendingCount === 0;
+      const undoMoveBtn = document.createElement('button');
+      undoMoveBtn.className = 'btn btn-secondary';
+      undoMoveBtn.textContent = 'Undo Move';
+      undoMoveBtn.disabled = !canUndo;
+      undoMoveBtn.title = canUndo ? 'Undo last submitted move' : pendingCount > 0 ? 'Clear pending tiles first' : '';
+      undoMoveBtn.addEventListener('click', () => {
+        if (confirm('Undo the last move? This will restore the board to before it was played.')) {
+          this.game.undoMove();
+          this.selectedTile = null;
+          this.save();
+          this.render();
+        }
+      });
+      actions.appendChild(undoMoveBtn);
+
+      // Move history toggle
+      if (state.moveHistory.length > 0) {
+        const historyBtn = document.createElement('button');
+        historyBtn.className = 'btn';
+        historyBtn.textContent = `History (${state.moveHistory.length})`;
+        historyBtn.addEventListener('click', () => {
+          this.showMoveHistory();
+        });
+        actions.appendChild(historyBtn);
+      }
     } else if (state.phase === 'gameover') {
-      const winner = this.game.getWinner();
+      const summary = this.game.getSummary();
+      const winner = summary.winner;
+
+      // Banner
       const resultDiv = document.createElement('div');
       resultDiv.className = 'game-over-banner';
       if (winner) {
@@ -549,6 +580,28 @@ export class GameUI {
         resultDiv.textContent = `🤝 Tie game! ${state.players[0]!.score} - ${state.players[1]!.score}`;
       }
       actions.appendChild(resultDiv);
+
+      // Summary stats
+      const statsDiv = document.createElement('div');
+      statsDiv.className = 'game-summary-stats';
+      statsDiv.innerHTML = `
+        <div class="summary-row"><span>Turns played</span><span>${summary.totalTurns}</span></div>
+        <div class="summary-row"><span>Best word</span><span>${summary.bestWord ? `"${summary.bestWord.word}" (${summary.bestWord.score} pts)` : '—'}</span></div>
+        <div class="summary-row"><span>${state.players[0]!.name}</span><span>${summary.finalScores[0]} pts</span></div>
+        <div class="summary-row"><span>${state.players[1]!.name}</span><span>${summary.finalScores[1]} pts</span></div>
+      `;
+      actions.appendChild(statsDiv);
+
+      // History button
+      if (summary.moveHistory.length > 0) {
+        const historyBtn = document.createElement('button');
+        historyBtn.className = 'btn';
+        historyBtn.textContent = 'View Full History';
+        historyBtn.addEventListener('click', () => {
+          this.showMoveHistory();
+        });
+        actions.appendChild(historyBtn);
+      }
 
       const newGameBtn = document.createElement('button');
       newGameBtn.className = 'btn btn-primary';
@@ -680,6 +733,87 @@ export class GameUI {
 
     overlay.appendChild(dialog);
     // Click overlay background to close
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) overlay.remove();
+    });
+    document.body.appendChild(overlay);
+  }
+
+  // ─── Move History ───────────────────────────────────
+
+  private showMoveHistory(): void {
+    const old = document.getElementById('word-details-overlay');
+    if (old) old.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'word-details-overlay';
+    overlay.className = 'blank-picker-overlay';
+
+    const dialog = document.createElement('div');
+    dialog.className = 'blank-picker-dialog';
+    dialog.style.cssText = 'text-align:left;max-width:380px;max-height:80dvh;overflow-y:auto;';
+
+    const title = document.createElement('div');
+    title.className = 'blank-picker-title';
+    title.textContent = 'Move History';
+    dialog.appendChild(title);
+
+    const records = this.game.moveRecords;
+    if (records.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'blank-picker-subtitle';
+      empty.textContent = 'No moves yet.';
+      dialog.appendChild(empty);
+    } else {
+      const list = document.createElement('div');
+      list.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin:8px 0 4px;';
+
+      for (const rec of records) {
+        const item = document.createElement('div');
+        item.style.cssText = 'display:flex;flex-direction:column;gap:2px;padding:6px 8px;border-radius:6px;background:var(--bg-card-secondary);font-size:0.78rem;';
+
+        const header = document.createElement('div');
+        header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;';
+        header.innerHTML = `<span style="font-weight:600;">T${rec.turnNumber} · ${this.esc(rec.playerName)}</span><span style="font-weight:700;">${rec.totalScore > 0 ? '+' : ''}${rec.totalScore} pts</span>`;
+        item.appendChild(header);
+
+        if (rec.words.length > 0) {
+          const wordsDiv = document.createElement('div');
+          wordsDiv.style.cssText = 'display:flex;flex-wrap:wrap;gap:3px;';
+          for (const w of rec.words) {
+            const wordSpan = document.createElement('span');
+            wordSpan.className = 'preview-word';
+            wordSpan.textContent = `"${w.word}" (+${w.score})`;
+            wordSpan.style.fontSize = '0.75rem';
+            wordSpan.addEventListener('click', () => this.showWordDetails(w.word));
+            wordsDiv.appendChild(wordSpan);
+          }
+          item.appendChild(wordsDiv);
+        } else {
+          const desc = document.createElement('div');
+          desc.style.cssText = 'color:var(--text-tertiary);font-size:0.7rem;';
+          desc.textContent = rec.moveDescription;
+          item.appendChild(desc);
+        }
+
+        const cumScore = document.createElement('div');
+        cumScore.style.cssText = 'color:var(--text-tertiary);font-size:0.65rem;text-align:right;margin-top:1px;';
+        cumScore.textContent = `Total: ${rec.cumulativeScore} pts`;
+        item.appendChild(cumScore);
+
+        list.appendChild(item);
+      }
+      dialog.appendChild(list);
+    }
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'btn btn-secondary blank-picker-cancel';
+    closeBtn.style.marginTop = '10px';
+    closeBtn.textContent = 'Close';
+    closeBtn.addEventListener('click', () => overlay.remove());
+    dialog.appendChild(closeBtn);
+
+    overlay.appendChild(dialog);
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) overlay.remove();
     });
