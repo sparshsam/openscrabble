@@ -2,7 +2,26 @@
   "name": "openscrabble",
   "version": "0.2.1",
   "private": true,
+  "description": "A clean, local-first, two-player Scrabble game built with TypeScript and Vite. Mobile-first design, no accounts, no AI.",
   "type": "module",
+  "license": "MIT",
+  "author": "Sparsham Sam",
+  "keywords": [
+    "scrabble",
+    "board-game",
+    "word-game",
+    "typescript",
+    "vite",
+    "local-first"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sparshsam/openscrabble.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sparshsam/openscrabble/issues"
+  },
+  "homepage": "https://github.com/sparshsam/openscrabble#readme",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",

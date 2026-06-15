@@ -1,4 +1,34 @@
+# --- Dependencies ---
 node_modules/
+.pnp
+.pnp.js
+
+# --- Build output ---
 dist/
+build/
+
+# --- TypeScript ---
 *.tsbuildinfo
+
+# --- IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Environment ---
+.env
+.env.local
+.env.*.local
+
+# --- Vercel ---
 .vercel
+
+# --- Logs ---
+*.log
+npm-debug.log*
