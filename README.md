@@ -1,6 +1,18 @@
-# OpenScrabble v0.2
+# OpenScrabble
+
+<div align="center">
+
+[![Release](https://img.shields.io/github/v/release/sparshsam/openscrabble?sort=semver&style=for-the-badge&label=version)](https://github.com/sparshsam/openscrabble/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/sparshsam/openscrabble/ci.yml?branch=master&style=for-the-badge&label=CI)](https://github.com/sparshsam/openscrabble/actions)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](https://github.com/sparshsam/openscrabble/blob/master/README.md#license)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Vite](https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
+
+</div>
 
 A clean, local-first, two-player Scrabble game built with TypeScript and Vite. Mobile-first design, no accounts, no AI, no nonsense.
+
+**Status:** Maintained. v0.3.0 — active development with regular releases.
 
 ## Quick Start
 
@@ -94,6 +106,28 @@ openscrabble/
 └── vite.config.ts
 ```
 
+## Quick Links
+
+- [Architecture](ARCHITECTURE.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security Policy](SECURITY.md)
+- [Support](SUPPORT.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+
+## Features
+
+| Feature | Status |
+|---------|--------|
+| 15×15 Scrabble board with premium squares | ✅ Complete |
+| Official tile distribution (100 tiles, 2 blanks) | ✅ Complete |
+| Two-player local gameplay | ✅ Complete |
+| Word validation with built-in dictionary | ✅ Complete |
+| Bingo bonus (+50) | ✅ Complete |
+| Pass / Swap mechanics | ✅ Complete |
+| Mobile-first responsive design | ✅ Complete |
+| Cross-word validation | ✅ Complete |
+| Custom player names via URL params | ✅ Complete |
+
 ## Tech Stack
 
 - **TypeScript** (strict mode, `noUncheckedIndexedAccess`)
@@ -103,4 +137,4 @@ openscrabble/
 
 ## License
 
-MIT
+This project is available under the MIT license.
