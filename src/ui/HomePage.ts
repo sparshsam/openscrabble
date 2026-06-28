@@ -57,7 +57,12 @@ export class HomePage {
 
     const logo = document.createElement('div');
     logo.className = 'home-logo';
-    logo.textContent = '🔤';
+    const logoImg = document.createElement('img');
+    logoImg.src = '/favicon.svg';
+    logoImg.alt = 'OpenScrabble';
+    logoImg.style.width = '72px';
+    logoImg.style.height = '72px';
+    logo.appendChild(logoImg);
 
     const title = document.createElement('h1');
     title.className = 'home-title';
@@ -170,13 +175,22 @@ export class HomePage {
     panel.className = 'home-section';
 
     const toggle = document.createElement('button');
-    toggle.className = 'btn home-section-toggle';
-    toggle.innerHTML = '▸  How to Play';
+    toggle.className = 'home-section-toggle';
+
+    const labelSpan = document.createElement('span');
+    labelSpan.textContent = 'How to Play';
+
+    const arrow = document.createElement('span');
+    arrow.className = 'toggle-arrow';
+    arrow.textContent = '▼';
+
+    toggle.appendChild(labelSpan);
+    toggle.appendChild(arrow);
+
     toggle.addEventListener('click', () => {
       content.classList.toggle('open');
-      toggle.innerHTML = content.classList.contains('open')
-        ? '▾  How to Play'
-        : '▸  How to Play';
+      arrow.classList.toggle('open');
+      toggle.classList.toggle('open');
     });
 
     const content = document.createElement('div');

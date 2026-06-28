@@ -107,42 +107,127 @@ export class GameUI {
     return container;
   }
 
+  // ─── In-App Modal ────────────────────────────────────
+
+  private showConfirmModal(
+    title: string,
+    message: string,
+    confirmLabel: string,
+    onConfirm: () => void
+  ): void {
+    // Remove any existing modal
+    const old = document.getElementById('app-modal');
+    if (old) old.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'app-modal';
+    overlay.className = 'app-modal-overlay';
+
+    const dialog = document.createElement('div');
+    dialog.className = 'app-modal-dialog';
+
+    const titleEl = document.createElement('div');
+    titleEl.className = 'app-modal-title';
+    titleEl.textContent = title;
+
+    const textEl = document.createElement('div');
+    textEl.className = 'app-modal-text';
+    textEl.textContent = message;
+
+    const actions = document.createElement('div');
+    actions.className = 'app-modal-actions';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'btn';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', () => overlay.remove());
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.className = 'btn btn-primary';
+    confirmBtn.textContent = confirmLabel;
+    confirmBtn.addEventListener('click', () => {
+      overlay.remove();
+      onConfirm();
+    });
+
+    actions.appendChild(cancelBtn);
+    actions.appendChild(confirmBtn);
+    dialog.appendChild(titleEl);
+    dialog.appendChild(textEl);
+    dialog.appendChild(actions);
+    overlay.appendChild(dialog);
+
+    // Click overlay background to dismiss
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) overlay.remove();
+    });
+
+    document.body.appendChild(overlay);
+
+    // Focus the cancel button
+    cancelBtn.focus();
+  }
+
   // ─── Header ──────────────────────────────────────────
 
   private createHeader(state: GameState): HTMLElement {
     const header = document.createElement('header');
     header.className = 'game-header';
-    header.innerHTML = `<h1>OpenScrabble</h1>
-      <div class="header-actions">
-        <span class="turn-indicator">Turn ${state.turnNumber}</span>
-        <button class="btn btn-icon" data-action="reset" title="New Game">↻</button>
-        <button class="btn btn-icon" data-action="home" title="Home">⌂</button>
-      </div>`;
 
-    header.querySelector('[data-action="reset"]')?.addEventListener('click', () => {
-      this.onReset();
+    const title = document.createElement('span');
+    title.className = 'game-header-title';
+    title.textContent = 'OpenScrabble';
+    title.addEventListener('click', () => {
+      this.save();
+      this.onBackToHome?.();
     });
 
-    header.querySelector('[data-action="home"]')?.addEventListener('click', () => {
-      if (confirm('Return to home? The current game will be saved.')) {
-        this.save();
-        this.onBackToHome?.();
-      }
-    });
+    header.appendChild(title);
 
-    return header;
-  }
+    const actions = document.createElement('div');
+    actions.className = 'header-actions';
 
-  private onReset(): void {
-    if (confirm('Start a new game? Your current game will be lost.')) {
-      GamePersistence.clear();
-      this.game = new Game(
-        this.game.players[0]!.name,
-        this.game.players[1]!.name
+    const turnSpan = document.createElement('span');
+    turnSpan.className = 'turn-indicator';
+    turnSpan.textContent = `Turn ${state.turnNumber}`;
+    actions.appendChild(turnSpan);
+
+    // Reset (new game) — uses app modal, no browser confirm
+    const resetBtn = document.createElement('button');
+    resetBtn.className = 'btn btn-icon';
+    resetBtn.textContent = '↻';
+    resetBtn.title = 'New Game';
+    resetBtn.addEventListener('click', () => {
+      this.showConfirmModal(
+        'New Game',
+        'Start a new game? Your current game will be lost.',
+        'New Game',
+        () => {
+          GamePersistence.clear();
+          this.game = new Game(
+            this.game.players[0]!.name,
+            this.game.players[1]!.name
+          );
+          this.selectedTile = null;
+          this.render();
+        }
       );
-      this.selectedTile = null;
-      this.render();
-    }
+    });
+    actions.appendChild(resetBtn);
+
+    // Home — saves silently, no warning needed
+    const homeBtn = document.createElement('button');
+    homeBtn.className = 'btn btn-icon';
+    homeBtn.textContent = '⌂';
+    homeBtn.title = 'Home';
+    homeBtn.addEventListener('click', () => {
+      this.save();
+      this.onBackToHome?.();
+    });
+    actions.appendChild(homeBtn);
+
+    header.appendChild(actions);
+    return header;
   }
 
   // ─── Score Display ───────────────────────────────────
@@ -217,10 +302,12 @@ export class GameUI {
     }
 
     // Premium square
-    if (premium && !tile && !(row === 7 && col === 7)) {
+    if (premium && !(row === 7 && col === 7)) {
       cell.classList.add(`premium-${premium}`);
       cell.dataset.premium = premium;
-      cell.textContent = this.getPremiumLabel(premium);
+      if (!tile) {
+        cell.textContent = this.getPremiumLabel(premium);
+      }
     }
 
     // Placed tile
@@ -242,7 +329,15 @@ export class GameUI {
       cell.dataset.tileId = tile.id;
       cell.textContent = tile.playedAs ?? tile.letter;
 
-      // Point badge
+      // Premium badge on tile (bottom-left)
+      if (premium) {
+        const premiumBadge = document.createElement('span');
+        premiumBadge.className = 'tile-premium';
+        premiumBadge.textContent = this.getPremiumLabel(premium);
+        cell.appendChild(premiumBadge);
+      }
+
+      // Point badge (bottom-right)
       const badge = document.createElement('span');
       badge.className = 'tile-points';
       badge.textContent = String(tile.points);
@@ -548,12 +643,17 @@ export class GameUI {
       undoMoveBtn.disabled = !canUndo;
       undoMoveBtn.title = canUndo ? 'Undo last submitted move' : pendingCount > 0 ? 'Clear pending tiles first' : '';
       undoMoveBtn.addEventListener('click', () => {
-        if (confirm('Undo the last move? This will restore the board to before it was played.')) {
-          this.game.undoMove();
-          this.selectedTile = null;
-          this.save();
-          this.render();
-        }
+        this.showConfirmModal(
+          'Undo Move',
+          'Undo the last submitted move? This will restore the board to before it was played.',
+          'Undo',
+          () => {
+            this.game.undoMove();
+            this.selectedTile = null;
+            this.save();
+            this.render();
+          }
+        );
       });
       actions.appendChild(undoMoveBtn);
 
