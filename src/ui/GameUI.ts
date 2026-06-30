@@ -4,7 +4,7 @@ import { GamePersistence } from '../game/Persistence.js';
 import { getPremiumType } from '../game/Board.js';
 import { type WordDefinition, fetchDefinition } from '../game/WordDefinitions.js';
 import { WordValidator } from '../game/WordValidator.js';
-import { resignGame, finalizeGame } from '../lib/LocalGameStore.js';
+import { resignGame, finalizeGame, removeGameRecord } from '../lib/LocalGameStore.js';
 import { navigate } from '../lib/routes.js';
 
 /**
@@ -125,6 +125,7 @@ export class GameUI {
     const preview = this.game.getPendingTiles().length > 0 ? this.game.previewMove() : null;
     container.appendChild(this.createLivePreview(preview));
     container.appendChild(this.createActionsBar(state));
+    container.appendChild(this.createLastMoveSummary());
     container.appendChild(this.createRack(state));
     container.appendChild(this.createMessageArea());
 
@@ -436,6 +437,38 @@ export class GameUI {
 
   // ─── Rack ────────────────────────────────────────────
 
+  private createLastMoveSummary(): HTMLElement {
+    const container = document.createElement('div');
+    container.className = 'last-move-summary';
+
+    const records = this.game.moveRecords;
+    if (records.length === 0) {
+      container.style.display = 'none';
+      return container;
+    }
+
+    const last = records[records.length - 1]!;
+    const words = last.words.map((w) =>
+      `<span class="last-move-word" data-word="${w.word}">"${w.word}" (+${w.score})</span>`
+    ).join(' + ');
+
+    container.innerHTML = `
+      <span class="last-move-label">Last Move</span>
+      <span class="last-move-detail">${words} → <strong>+${last.totalScore}</strong></span>
+    `;
+
+    // Make words tappable for definitions
+    container.querySelectorAll('.last-move-word').forEach((el) => {
+      const word = (el as HTMLElement).dataset.word!;
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.showWordDetails(word);
+      });
+    });
+
+    return container;
+  }
+
   private createRack(state: GameState): HTMLElement {
     const rackContainer = document.createElement('div');
     rackContainer.className = 'rack-container';
@@ -692,11 +725,15 @@ export class GameUI {
         actions.appendChild(historyBtn);
       }
 
-      // ── Resign ──
+      // ── Resign / Quit ──
+      const hasMoves = this.game.moveRecords.length > 0;
       const resignBtn = document.createElement('button');
       resignBtn.className = 'btn btn-danger-outline';
-      resignBtn.textContent = 'Resign';
-      resignBtn.addEventListener('click', () => this.confirmResign());
+      resignBtn.textContent = hasMoves ? 'Resign' : 'Quit Game';
+      resignBtn.title = hasMoves
+        ? 'Forfeit this game — opponent wins'
+        : 'Remove this game — no moves recorded, no penalty';
+      resignBtn.addEventListener('click', () => this.confirmQuit(hasMoves));
       actions.appendChild(resignBtn);
 
     } else if (state.phase === 'gameover') {
@@ -838,16 +875,18 @@ export class GameUI {
     if (result.success) {
       const wordsText = result.words.map((w) => `"${w.word}"`).join(', ');
       const bingoNote = result.totalScore >= 57 ? ' 🎉 Bingo!' : '';
-      msgEl.textContent = `${wordsText} → +${result.totalScore} pts${bingoNote}`;
+      msgEl.innerHTML = `${wordsText} → +${result.totalScore} pts${bingoNote}`;
       msgEl.className = 'message-area success';
     } else {
-      msgEl.textContent = result.error ?? 'Invalid move';
+      const errorText = result.error ?? 'Invalid move';
+      // Add dictionary source context to error
+      msgEl.innerHTML = `✕ ${errorText} <span class="msg-dict-source">(Collins UK-style)</span>`;
       msgEl.className = 'message-area error';
     }
 
     setTimeout(() => {
       msgEl.className = 'message-area';
-      msgEl.textContent = '';
+      msgEl.innerHTML = '';
     }, 6000);
   }
 
@@ -878,6 +917,12 @@ export class GameUI {
     }`;
     validBadge.textContent = isValid ? '✓ Valid word' : '✕ Not in dictionary';
     dialog.appendChild(validBadge);
+
+    // Dictionary source
+    const sourceLabel = document.createElement('div');
+    sourceLabel.style.cssText = 'font-size:0.65rem;color:var(--text-tertiary);margin-bottom:10px;';
+    sourceLabel.textContent = 'Dictionary: Collins UK-style';
+    dialog.appendChild(sourceLabel);
 
     const content = document.createElement('div');
     content.className = 'blank-picker-subtitle';
@@ -959,38 +1004,37 @@ export class GameUI {
       dialog.appendChild(empty);
     } else {
       const list = document.createElement('div');
-      list.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin:8px 0 4px;';
+      list.className = 'history-modal-list';
 
       for (const rec of records) {
         const item = document.createElement('div');
-        item.style.cssText = 'display:flex;flex-direction:column;gap:2px;padding:6px 8px;border-radius:6px;background:var(--bg-card-secondary);font-size:0.78rem;';
+        item.className = 'history-list-item';
 
         const header = document.createElement('div');
-        header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;';
-        header.innerHTML = `<span style="font-weight:600;">T${rec.turnNumber} · ${this.esc(rec.playerName)}</span><span style="font-weight:700;">${rec.totalScore > 0 ? '+' : ''}${rec.totalScore} pts</span>`;
+        header.className = 'history-item-header';
+        header.innerHTML = `<span class="history-item-turn">T${rec.turnNumber} · ${this.esc(rec.playerName)}</span><span class="history-item-score">${rec.totalScore > 0 ? '+' : ''}${rec.totalScore}</span>`;
         item.appendChild(header);
 
         if (rec.words.length > 0) {
           const wordsDiv = document.createElement('div');
-          wordsDiv.style.cssText = 'display:flex;flex-wrap:wrap;gap:3px;';
+          wordsDiv.className = 'history-item-words';
           for (const w of rec.words) {
             const wordSpan = document.createElement('span');
-            wordSpan.className = 'preview-word';
+            wordSpan.className = 'history-item-word';
             wordSpan.textContent = `"${w.word}" (+${w.score})`;
-            wordSpan.style.fontSize = '0.75rem';
             wordSpan.addEventListener('click', () => this.showWordDetails(w.word));
             wordsDiv.appendChild(wordSpan);
           }
           item.appendChild(wordsDiv);
         } else {
           const desc = document.createElement('div');
-          desc.style.cssText = 'color:var(--text-tertiary);font-size:0.7rem;';
+          desc.className = 'history-item-desc';
           desc.textContent = rec.moveDescription;
           item.appendChild(desc);
         }
 
         const cumScore = document.createElement('div');
-        cumScore.style.cssText = 'color:var(--text-tertiary);font-size:0.65rem;text-align:right;margin-top:1px;';
+        cumScore.className = 'history-item-total';
         cumScore.textContent = `Total: ${rec.cumulativeScore} pts`;
         item.appendChild(cumScore);
 
@@ -1078,31 +1122,49 @@ export class GameUI {
 
   // ─── Helpers ─────────────────────────────────────────
 
-  private confirmResign(): void {
+  private confirmQuit(hasMoves: boolean): void {
     const state = this.game.getState();
     const playerName = state.players[state.currentPlayerIndex]!.name;
-    this.showConfirmModal(
-      'Resign Game',
-      `${playerName}, are you sure you want to resign? The other player will win.`,
-      'Resign',
-      () => {
-        // Set end reason on game before recording
-        this.game.endReason = 'resign';
-        // Record resignation
-        this.save();
-        if (this.gameId) {
-          const s = this.game.getState();
-          resignGame(
-            this.gameId,
-            s.players.map((p) => p.score),
-            s.turnNumber,
-            s.currentPlayerIndex,
-            s.players.map((p) => p.name)
-          );
+
+    if (hasMoves) {
+      // Resign — opponent wins
+      this.showConfirmModal(
+        'Resign Game',
+        `${playerName}, are you sure you want to resign? The other player will win.`,
+        'Resign',
+        () => {
+          this.game.endReason = 'resign';
+          this.save();
+          if (this.gameId) {
+            const s = this.game.getState();
+            resignGame(
+              this.gameId,
+              s.players.map((p) => p.score),
+              s.turnNumber,
+              s.currentPlayerIndex,
+              s.players.map((p) => p.name)
+            );
+          }
+          navigate('hub');
         }
-        navigate('hub');
-      }
-    );
+      );
+    } else {
+      // Quit — no moves made, just delete the record
+      this.showConfirmModal(
+        'Quit Game',
+        `${playerName}, quit this game? No moves have been made — no loss recorded.`,
+        'Quit',
+        () => {
+          if (this.gameId) {
+            // Remove the game record entirely
+            removeGameRecord(this.gameId);
+            // Also remove any save data
+            GamePersistence.clear(this.gameId);
+          }
+          navigate('hub');
+        }
+      );
+    }
   }
 
   private getPremiumLabel(premium: string): string {

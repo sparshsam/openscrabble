@@ -1215,6 +1215,119 @@ body {
   color: var(--text-primary);
 }
 
+.msg-dict-source {
+  font-size: 0.6rem;
+  color: var(--text-tertiary);
+  font-weight: var(--font-normal);
+}
+
+/* ── Last Move Summary (v0.4.9) ──────────────── */
+.last-move-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-4);
+  background: var(--bg-surface);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  min-height: 32px;
+}
+
+.last-move-label {
+  font-weight: var(--font-bold);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+.last-move-detail {
+  color: var(--text-secondary);
+  flex: 1;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.last-move-word {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--accent);
+  color: var(--accent);
+  transition: opacity 0.1s;
+}
+
+.last-move-word:hover {
+  opacity: 0.7;
+}
+
+/* ── History Modal Items (v0.4.9) ────────────── */
+.history-modal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0 4px;
+}
+
+.history-list-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: var(--bg-card-secondary, var(--bg-surface-muted));
+  font-size: 0.78rem;
+}
+
+.history-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.history-item-turn {
+  font-weight: var(--font-bold);
+  color: var(--text-primary);
+}
+
+.history-item-score {
+  font-weight: var(--font-bold);
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.history-item-words {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.history-item-word {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 1px;
+  text-decoration-color: var(--accent);
+  color: var(--accent);
+  font-size: 0.75rem;
+}
+
+.history-item-desc {
+  color: var(--text-tertiary);
+  font-size: 0.7rem;
+}
+
+.history-item-total {
+  color: var(--text-tertiary);
+  font-size: 0.65rem;
+  text-align: right;
+  margin-top: 1px;
+}
+
 /* ── MESSAGE ──────────────────────────────────── */
 
 .message-area {

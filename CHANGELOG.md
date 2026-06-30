@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.4.9 — Turn History + Word Definitions Polish (2026-06-29)
+
+### Added
+- **Last Move Summary**: Shows the most recent word(s) played between the actions bar and rack. Words are tappable for definitions.
+- **Quit Game**: When no moves have been played, the Resign button reads "Quit Game" and removes the game record without recording a loss. Confirmation modal explains "no loss recorded."
+- **Dictionary source label**: Word details modal now shows "Dictionary: Collins UK-style" below the valid/invalid badge.
+- **Invalid word explanation**: Error messages include `(Collins UK-style)` source context.
+- **Polished history modal**: Replaced all inline styles with CSS classes (`.history-modal-list`, `.history-list-item`, `.history-item-header`, `.history-item-turn`, `.history-item-score`, `.history-item-words`, `.history-item-word`, `.history-item-desc`, `.history-item-total`).
+
+### Changed
+- Resign button title shows "Forfeit this game — opponent wins" or "Remove this game — no moves recorded, no penalty".
+- `confirmResign()` renamed to `confirmQuit(hasMoves: boolean)` — handles both resign (has moves) and quit (no moves) paths.
+- `removeGameRecord` imported in GameUI for quit path.
+- Historic `showMessage()` now uses `innerHTML` for dictionary source annotation.
+
 ## v0.4.8 — Game Results + End Screen (2026-06-29)
 
 ### Added
