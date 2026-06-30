@@ -486,12 +486,45 @@ export class GameUI {
 
     const player = state.players[state.currentPlayerIndex]!;
     const pendingTileIds = new Set(this.game.getPendingTiles().map((t) => t.id));
+    const hasPending = this.game.getPendingTiles().length > 0;
+
+    // ── Rack Header ──
+    const rackHeader = document.createElement('div');
+    rackHeader.className = 'rack-header';
 
     const label = document.createElement('div');
     label.className = 'rack-label';
     label.textContent = `${player.name}'s Rack`;
-    rackContainer.appendChild(label);
+    rackHeader.appendChild(label);
 
+    // Clear All button inside rack (only visible when tiles are placed)
+    if (hasPending) {
+      const clearBtn = document.createElement('button');
+      clearBtn.className = 'btn rack-clear-btn';
+      clearBtn.innerHTML = '✕ Clear';
+      clearBtn.title = 'Return all pending tiles to rack';
+      clearBtn.addEventListener('click', () => {
+        this.game.clearPending();
+        this.selectedTile = null;
+        this.save();
+        this.render();
+      });
+      rackHeader.appendChild(clearBtn);
+    }
+
+    // Bag info + toggle
+    const bagInfo = document.createElement('button');
+    bagInfo.className = 'btn rack-bag-info';
+    bagInfo.innerHTML = `<span class="bag-dot">●</span> ${state.bag.length}`;
+    bagInfo.title = 'Show remaining tiles';
+    bagInfo.addEventListener('click', () => {
+      bagView.classList.toggle('open');
+    });
+    rackHeader.appendChild(bagInfo);
+
+    rackContainer.appendChild(rackHeader);
+
+    // ── Rack Tiles ──
     const rack = document.createElement('div');
     rack.className = 'tile-rack';
 
@@ -565,6 +598,39 @@ export class GameUI {
     }
 
     rackContainer.appendChild(rack);
+
+    // ── Bag View (collapsible) ──
+    const bagView = document.createElement('div');
+    bagView.className = 'bag-view';
+    bagView.id = 'bag-view-panel';
+
+    const cats = this.game.bag.getLetterCategoryCounts();
+    const counts = this.game.bag.getRemainingLetterCounts();
+
+    // Category row
+    const catRow = document.createElement('div');
+    catRow.className = 'bag-category-row';
+    catRow.innerHTML = `
+      <span class="bag-cat"><span class="bag-cat-dot bag-vowel">●</span> Vowels ${cats.vowels}</span>
+      <span class="bag-cat"><span class="bag-cat-dot bag-consonant">●</span> Consonants ${cats.consonants}</span>
+      <span class="bag-cat"><span class="bag-cat-dot bag-blank">●</span> Blanks ${cats.blanks}</span>
+    `;
+    bagView.appendChild(catRow);
+
+    // Letter grid
+    const letterGrid = document.createElement('div');
+    letterGrid.className = 'bag-letter-grid';
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    for (const ch of letters) {
+      const remaining = counts.get(ch) || 0;
+      const cell = document.createElement('span');
+      cell.className = `bag-letter-cell${remaining === 0 ? ' bag-letter-empty' : ''}`;
+      cell.innerHTML = `${ch}<span class="bag-letter-count">${remaining}</span>`;
+      letterGrid.appendChild(cell);
+    }
+    bagView.appendChild(letterGrid);
+
+    rackContainer.appendChild(bagView);
     return rackContainer;
   }
 
@@ -683,21 +749,6 @@ export class GameUI {
 
       const moreDrawer = document.createElement('div');
       moreDrawer.className = 'more-actions-drawer';
-
-      // Clear All
-      const clearBtn = document.createElement('button');
-      clearBtn.className = 'btn btn-drawer';
-      clearBtn.textContent = 'Clear All';
-      clearBtn.disabled = pendingCount === 0;
-      clearBtn.addEventListener('click', () => {
-        this.game.clearPending();
-        this.selectedTile = null;
-        this.save();
-        this.render();
-        moreDrawer.classList.remove('open');
-        moreToggle.classList.remove('open');
-      });
-      moreDrawer.appendChild(clearBtn);
 
       // Undo Last
       const undoBtn = document.createElement('button');

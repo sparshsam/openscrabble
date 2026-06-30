@@ -83,4 +83,35 @@ export class Bag {
   reset(): void {
     this.initialize();
   }
+
+  /** Get remaining count per letter */
+  getRemainingLetterCounts(): Map<string, number> {
+    const counts = new Map<string, number>();
+    for (const id of this.remainingIds) {
+      const tile = this.tiles.get(id);
+      if (tile) {
+        const letter = tile.isBlank ? '?' : tile.letter.toUpperCase();
+        counts.set(letter, (counts.get(letter) || 0) + 1);
+      }
+    }
+    return counts;
+  }
+
+  /** Get vowel, consonant, and blank counts remaining */
+  getLetterCategoryCounts(): { vowels: number; consonants: number; blanks: number } {
+    const vowels = new Set(['A', 'E', 'I', 'O', 'U']);
+    let v = 0, c = 0, b = 0;
+    for (const id of this.remainingIds) {
+      const tile = this.tiles.get(id);
+      if (!tile) continue;
+      if (tile.isBlank) {
+        b++;
+      } else if (vowels.has(tile.letter.toUpperCase())) {
+        v++;
+      } else {
+        c++;
+      }
+    }
+    return { vowels: v, consonants: c, blanks: b };
+  }
 }
