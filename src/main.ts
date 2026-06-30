@@ -1,16 +1,16 @@
 /**
- * main.ts — App entry point for OpenScrabble v0.4.2.
+ * main.ts — App entry point for OpenScrabble v0.4.3.
  *
- * Multi-game persistence:
+ * Multi-game persistence with robust routing:
  *   - #game?gameId=<id>  loads a specific saved game
- *   - New Game → NewGameSetupPage → creates game record → routes to #game?gameId=<id>
- *   - Hub shows all running games, not just one
- *   - Legacy openscrabble_save still supported for backward compat
+ *   - #new-game          opens the player setup page
+ *   - Stale records cleaned on hub render
+ *   - Legacy openscrabble_save supported for backward compat
  */
 
 import './ui/styles.css';
 import type { Screen } from './lib/routes.js';
-import { initRouter, navigate, parseHash, getInitialScreen } from './lib/routes.js';
+import { initRouter, navigate, parseHash } from './lib/routes.js';
 import { hasOnboarded, restoreSession } from './auth/AuthService.js';
 import { initSupabase } from './lib/supabase.js';
 import { GameUI } from './ui/GameUI.js';
@@ -24,7 +24,7 @@ import { AppShell } from './lib/AppShell.js';
 import { GamePersistence } from './game/Persistence.js';
 import { loadWordSet, isWordSetLoaded } from './game/DictionaryLoader.js';
 import { Game } from './game/Game.js';
-import { createActiveGameRecord, getGameById, updateGameRecord, touchActiveGame } from './lib/LocalGameStore.js';
+import { createActiveGameRecord, getGameById, updateGameRecord, touchActiveGame, loadAllGames, saveAllGames } from './lib/LocalGameStore.js';
 import pkg from '../package.json';
 
 let appShell: AppShell | null = null;
@@ -103,6 +103,29 @@ export function createThemeToggle(): HTMLElement {
   return toggle;
 }
 
+/* ─── Stale Record Cleanup ───────────────────── */
+
+function cleanStaleRecords(): void {
+  const all = loadAllGames();
+  const filtered = all.filter((g) => {
+    // Remove "Player 1 vs Player 2" records that have no actual save data
+    if (g.players.length === 2 &&
+        g.players[0] === 'Player 1' &&
+        g.players[1] === 'Player 2' &&
+        g.totalTurns === 0) {
+      // Check if there's actual save data
+      const saveKey = g.saveKey || `openscrabble_save_${g.id}`;
+      if (!localStorage.getItem(saveKey) && !localStorage.getItem('openscrabble_save')) {
+        return false; // stale, remove
+      }
+    }
+    return true;
+  });
+  if (filtered.length !== all.length) {
+    saveAllGames(filtered);
+  }
+}
+
 /* ─── App ────────────────────────────────────── */
 
 async function init(): Promise<void> {
@@ -111,6 +134,9 @@ async function init(): Promise<void> {
     console.error('Root element #app not found');
     return;
   }
+
+  // Clean stale records from previous versions
+  cleanStaleRecords();
 
   const themeToggle = createThemeToggle();
   document.body.prepend(themeToggle);
@@ -150,6 +176,12 @@ function renderScreen(screen: Screen, params: Record<string, any>): void {
       currentComponent = onboarding;
       break;
     }
+    case 'new-game': {
+      const setup = new NewGameSetupPage(root);
+      setup.render();
+      currentComponent = setup;
+      break;
+    }
     case 'game': {
       showGame(params, root);
       break;
@@ -182,11 +214,12 @@ function showHub(root: HTMLElement): void {
   const hub = new HubPage(
     content,
     () => {
-      // New Game → show setup page
-      const setupRoot = document.getElementById('app');
-      if (!setupRoot) return;
-      const setupPage = new NewGameSetupPage(setupRoot);
-      setupPage.render();
+      // New Game → route through the proper #new-game path
+      navigate('new-game');
+    },
+    (gameId: string) => {
+      // Resume game → route to specific gameId
+      navigate('game', { gameId });
     }
   );
   hub.render();
@@ -198,8 +231,6 @@ function showGame(params: Record<string, any>, root: HTMLElement): void {
   if (!isWordSetLoaded()) loadWordSet();
 
   const gameId = params.gameId as string | undefined;
-  const p1 = (params.p1 as string) || 'Player 1';
-  const p2 = (params.p2 as string) || 'Player 2';
 
   if (gameId) {
     // Load by gameId from per-game save
@@ -209,7 +240,6 @@ function showGame(params: Record<string, any>, root: HTMLElement): void {
       gameUI = new GameUI(root, game, () => {
         navigate('hub');
       }, (scores, turnNumber) => {
-        // Auto-save callback — update record
         touchActiveGame(gameId, scores, turnNumber);
       });
       currentComponent = gameUI;
@@ -219,15 +249,21 @@ function showGame(params: Record<string, any>, root: HTMLElement): void {
     // Fallback: check legacy key
     const legacyData = GamePersistence.load();
     if (legacyData) {
-      const game = GamePersistence.restoreGame(legacyData);
-      gameUI = new GameUI(root, game, () => {
-        navigate('hub');
-      });
-      currentComponent = gameUI;
-      return;
+      // Only use legacy if it matches the game record's player names
+      const record = getGameById(gameId);
+      if (record) {
+        const game = GamePersistence.restoreGame(legacyData);
+        gameUI = new GameUI(root, game, () => {
+          navigate('hub');
+        }, (scores, turnNumber) => {
+          touchActiveGame(gameId, scores, turnNumber);
+        });
+        currentComponent = gameUI;
+        return;
+      }
     }
 
-    // No save found — mark as abandoned and go home
+    // No save found — mark as abandoned and redirect
     const record = getGameById(gameId);
     if (record && record.status === 'active') {
       updateGameRecord(gameId, { status: 'abandoned', completedDate: new Date().toISOString() });
@@ -236,22 +272,8 @@ function showGame(params: Record<string, any>, root: HTMLElement): void {
     return;
   }
 
-  // No gameId — this shouldn't happen with new flow, but handle gracefully
-  if (params.saved) {
-    const data = GamePersistence.load();
-    if (data) {
-      const game = GamePersistence.restoreGame(data);
-      gameUI = new GameUI(root, game, () => {
-        navigate('hub');
-      });
-      currentComponent = gameUI;
-      return;
-    }
-  }
-
-  // Fallback: create a game record and start fresh
-  const record = createActiveGameRecord([p1, p2]);
-  navigate('game', { gameId: record.id });
+  // No gameId — go to hub (new game must go through #new-game)
+  navigate('hub');
 }
 
 function showProfile(root: HTMLElement): void {

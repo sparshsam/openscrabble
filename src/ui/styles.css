@@ -2664,6 +2664,15 @@ body {
   margin-bottom: 0;
 }
 
+.settings-action-btn-danger {
+  color: var(--error) !important;
+  border-color: var(--error) !important;
+}
+
+.settings-action-btn-danger:hover {
+  background: rgba(255, 77, 77, 0.06) !important;
+}
+
 /* ══════════════════════════════════════════════════════
    v0.4.2 — Multi-Game Persistence + UX Corrections
    ══════════════════════════════════════════════════════ */

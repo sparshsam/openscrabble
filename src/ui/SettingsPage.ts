@@ -1,18 +1,16 @@
 /**
- * SettingsPage v0.4.2 — organized sections with safe modals.
+ * SettingsPage v0.4.3 — with data repair actions.
  *
  * Sections:
- *   - Profile (username, status, edit name, sign out)
- *   - Appearance (theme: segmented toggle)
- *   - Data (reset onboarding, clear history, clear all saves)
+ *   - Profile (username, status, edit name)
+ *   - Appearance (segmented theme toggle)
+ *   - Data (reset onboarding, clear running games, clear all local data, clear saves)
  *   - About
- *
- * No Player 1/Player 2 editor — that's in New Game flow.
  */
 
 import { getCurrentUser, signOut } from '../auth/AuthService.js';
 import { GamePersistence } from '../game/Persistence.js';
-import { clearAllGameRecords } from '../lib/LocalGameStore.js';
+import { clearAllGameRecords, loadAllGames, saveAllGames } from '../lib/LocalGameStore.js';
 import { navigate } from '../lib/routes.js';
 import { showModal, showInfoModal } from './Modal.js';
 import { loadGuestProfile, saveGuestProfile } from '../auth/AuthService.js';
@@ -89,7 +87,6 @@ export class SettingsPage {
     const current = document.documentElement.getAttribute('data-theme');
     const effective = current || 'system';
 
-    // Segmented toggle
     const toggle = document.createElement('div');
     toggle.className = 'theme-segmented';
 
@@ -104,11 +101,9 @@ export class SettingsPage {
       btn.className = `theme-seg-btn${opt.value === effective ? ' theme-seg-active' : ''}`;
       btn.textContent = opt.label;
       btn.addEventListener('click', () => {
-        // Update toggle state
         toggle.querySelectorAll('.theme-seg-btn').forEach((b) => b.classList.remove('theme-seg-active'));
         btn.classList.add('theme-seg-active');
 
-        // Apply theme
         const html = document.documentElement;
         if (opt.value === 'system') {
           html.removeAttribute('data-theme');
@@ -151,17 +146,45 @@ export class SettingsPage {
     });
     section.appendChild(resetBtn);
 
-    // Clear history
+    // Clear Running Games
+    const clearRunningBtn = document.createElement('button');
+    clearRunningBtn.className = 'btn settings-action-btn';
+    clearRunningBtn.textContent = 'Clear Running Games';
+    clearRunningBtn.addEventListener('click', () => {
+      showModal(
+        'Clear Running Games',
+        'Remove all active games and their saves? This cannot be undone.',
+        'Clear All',
+        () => {
+          const all = loadAllGames();
+          const kept = all.filter((g) => g.status !== 'active');
+          saveAllGames(kept);
+          // Remove saves for active games
+          for (const game of all) {
+            if (game.status === 'active') {
+              const key = game.saveKey || `openscrabble_save_${game.id}`;
+              localStorage.removeItem(key);
+            }
+          }
+          showInfoModal('Done', 'All running games cleared.');
+        }
+      );
+    });
+    section.appendChild(clearRunningBtn);
+
+    // Clear game history
     const clearHistoryBtn = document.createElement('button');
     clearHistoryBtn.className = 'btn settings-action-btn';
     clearHistoryBtn.textContent = 'Clear Game History';
     clearHistoryBtn.addEventListener('click', () => {
       showModal(
         'Clear History',
-        'Remove all game history records. This cannot be undone.\nActive games will also be removed.',
-        'Clear All',
+        'Remove all completed game history. Active games are kept.',
+        'Clear',
         () => {
-          clearAllGameRecords();
+          const all = loadAllGames();
+          const kept = all.filter((g) => g.status === 'active');
+          saveAllGames(kept);
           showInfoModal('Done', 'Game history cleared.');
         }
       );
@@ -175,7 +198,7 @@ export class SettingsPage {
     clearSavesBtn.addEventListener('click', () => {
       showModal(
         'Clear Saves',
-        'Remove all saved game state? Any unsaved progress will be lost.',
+        'Remove all saved game state. Game records are kept but cannot be resumed.',
         'Clear All',
         () => {
           GamePersistence.clearAll();
@@ -184,6 +207,27 @@ export class SettingsPage {
       );
     });
     section.appendChild(clearSavesBtn);
+
+    // Clear All Local Data
+    const clearAllBtn = document.createElement('button');
+    clearAllBtn.className = 'btn settings-action-btn settings-action-btn-danger';
+    clearAllBtn.textContent = 'Clear All Local Data';
+    clearAllBtn.addEventListener('click', () => {
+      showModal(
+        'Clear All Data',
+        'Remove ALL local data: games, history, saves, profile, and settings. This cannot be undone.',
+        'Clear Everything',
+        () => {
+          clearAllGameRecords();
+          GamePersistence.clearAll();
+          localStorage.removeItem('openscrabble_onboarded');
+          localStorage.removeItem('openscrabble_guest_profile');
+          localStorage.removeItem('openscrabble-theme');
+          navigate('onboarding');
+        }
+      );
+    });
+    section.appendChild(clearAllBtn);
 
     return section;
   }

@@ -23,6 +23,7 @@
 export type Screen =
   | 'hub'
   | 'game'
+  | 'new-game'
   | 'profile'
   | 'history'
   | 'settings'
@@ -93,6 +94,8 @@ export function parseHash(): { screen: Screen; params: RouteParams } {
   switch (base) {
     case 'game':
       return { screen: 'game', params };
+    case 'new-game':
+      return { screen: 'new-game', params };
     case 'profile':
       return { screen: 'profile', params };
     case 'history':
@@ -107,7 +110,7 @@ export function parseHash(): { screen: Screen; params: RouteParams } {
   }
 }
 
-function buildHash(screen: Screen, params: RouteParams): string {
+export function buildHash(screen: Screen, params: RouteParams): string {
   const parts: string[] = [screen];
   const query: string[] = [];
   if (params.saved) query.push('saved');

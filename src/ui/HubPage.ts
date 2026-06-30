@@ -16,13 +16,16 @@ import { loadAllGames, getActiveGames } from '../lib/LocalGameStore.js';
 export class HubPage {
   private root: HTMLElement;
   private onNewGame: () => void;
+  private onResumeGame: (gameId: string) => void;
 
   constructor(
     root: HTMLElement,
-    onNewGame: () => void
+    onNewGame: () => void,
+    onResumeGame: (gameId: string) => void
   ) {
     this.root = root;
     this.onNewGame = onNewGame;
+    this.onResumeGame = onResumeGame;
   }
 
   render(): void {
@@ -105,7 +108,7 @@ export class HubPage {
         <span class="hub-running-arrow">▶</span>
       `;
       item.addEventListener('click', () => {
-        navigate('game', { gameId: game.id });
+        this.onResumeGame(game.id);
       });
       section.appendChild(item);
     }

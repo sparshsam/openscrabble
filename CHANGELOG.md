@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.4.3 — Blocking Navigation + Game Launch Fix (2026-06-29)
+
+Critical bugfix: New Game and game resume were broken due to stale records from v0.4.1/v0.4.2 and inline rendering bypassing the router.
+
+### Fixed
+- **New Game**: Now routes through `#new-game` proper hash route instead of inline DOM replacement
+- **Game resume**: Running games use `onResumeGame` callback through main.ts, ensuring clean route transition
+- **Stale records**: Added `cleanStaleRecords()` — removes "Player 1 vs Player 2" records with no actual save data on startup
+- **Invalid gameId**: Missing/invalid gameId now cleanly marks as abandoned and redirects to hub (no silent flash)
+- **Legacy save handling**: Per-game saves (`openscrabble_save_<gameId>`) read first; legacy key used as backup only when record matches
+
+### Added
+- `#new-game` route in `routes.ts` — NewGameSetupPage renders through `renderScreen` like all other screens
+- `onResumeGame` callback in `HubPage` — separates new game and resume concerns
+- Route parsing tests: 14 tests covering all screens, gameId hash round-trip, UUID handling, unknown hash default
+- **Data section in Settings**: Clear Running Games, Clear All Local Data (with safe modals)
+- `cleanStaleRecords()` startup cleanup
+- `settings-action-btn-danger` CSS style for destructive buttons
+
+### Changed
+- Settings: Added "Clear Running Games" and "Clear All Local Data" repair options
+- Settings: "Clear Game History" now preserves active games
+- `buildHash` is now exported from routes.ts for testing
+- HubPage constructor now takes `onResumeGame(gameId)` as third parameter
+
+### Tests
+- 14 new route parsing tests (8 test files, 117 total tests)
+
 ## v0.4.2 — Multi-Game Persistence + UX Correction Pass (2026-06-29)
 
 Core game/session model corrected to support multiple active local games. New game flow moved to a dedicated setup page. Onboarding simplified.
