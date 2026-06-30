@@ -2806,6 +2806,35 @@ body {
   padding-top: var(--space-14);
 }
 
+/* ── Game Error Panel ────────────────────────── */
+.game-error-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  padding: var(--space-14) var(--space-4);
+  text-align: center;
+  min-height: 60dvh;
+}
+
+.game-error-icon {
+  font-size: 3rem;
+}
+
+.game-error-title {
+  font-size: var(--text-xl);
+  font-weight: var(--font-black);
+  color: var(--text-primary);
+}
+
+.game-error-message {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  max-width: 320px;
+  line-height: 1.5;
+}
+
 /* ── Settings Theme Row (override from v0.4.0) ─ */
 .settings-theme-row {
   display: flex;

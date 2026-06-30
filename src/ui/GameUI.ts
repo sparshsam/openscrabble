@@ -71,11 +71,18 @@ export class GameUI {
     onBackToHome?: () => void,
     onAutoSave?: (scores: number[], turnNumber: number) => void
   ) {
+    console.log('[GameUI] constructor, root element:', root?.id || root?.className, 'has game:', !!game);
     this.root = root;
     this.game = game ?? new Game();
     this.onBackToHome = onBackToHome ?? null;
     this.onAutoSave = onAutoSave ?? null;
-    this.render();
+    try {
+      this.render();
+      console.log('[GameUI] render completed');
+    } catch (e) {
+      console.error('[GameUI] render failed:', e);
+      showGameError(root, 'Failed to render game board. Please try starting a new game.');
+    }
   }
 
   private save(): void {
@@ -1010,4 +1017,21 @@ export class GameUI {
     el.textContent = s;
     return el.innerHTML;
   }
+}
+
+/**
+ * showGameError — dev-facing visible error panel.
+ * Renders inside the given root element with a clear error message and retry link.
+ */
+function showGameError(root: HTMLElement, message: string): void {
+  root.innerHTML = '';
+  const container = document.createElement('div');
+  container.className = 'game-error-panel';
+  container.innerHTML = `
+    <div class="game-error-icon">⚠️</div>
+    <h2 class="game-error-title">Something went wrong</h2>
+    <p class="game-error-message">${message}</p>
+    <button class="btn btn-primary" onclick="window.location.hash='#hub'">Back to Hub</button>
+  `;
+  root.appendChild(container);
 }

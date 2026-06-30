@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.4.4 — Hard Blocker: Game Screen Not Mounting (2026-06-29)
+
+Critical bugfix: Game screen never mounted because `createActiveGameRecord()` only created metadata records — no actual game state was saved. When `showGame()` tried to load by gameId, it found no save data, marked the record as abandoned, and bounced to hub.
+
+### Fixed
+- **`showGame` now creates game state from metadata**: When a gameId has an active metadata record but no save state, the game is created from the record's player names and saved immediately. This fixes both New Game and game resume.
+- **Console tracing**: Added `console.log`/`console.warn` at every critical junction — route parsing, navigate, hashchange, renderScreen, showGame, NewGameSetupPage.startGame, GameUI constructor/render.
+- **Visible error panel**: If GameUI constructor/render throws, a `game-error-panel` is shown with the error message and a "Back to Hub" button — no more silent failure.
+- **Stale record preservation**: Fixed the stale cleanup to not accidentally remove valid new-game records (metadata without save is now treated as a valid new game, not stale).
+
+### Added
+- `game-error-panel` CSS — visible error UI when GameUI fails to mount
+- `showGameError()` function in GameUI.ts — renders error panel inside the game root
+- `GameUI` constructor try/catch — catches render failures and shows error panel
+- 6 LocalGameStore tests — metadata creation, save state creation, stale detection, multiple games
+
+### Tests
+- 9 test files, 123 tests total (+6 game-store tests)
+- Tests prove: metadata record is created without save, save is created after GamePersistence.save, stale metadata-only records are detected as unresumable
+
 ## v0.4.3 — Blocking Navigation + Game Launch Fix (2026-06-29)
 
 Critical bugfix: New Game and game resume were broken due to stale records from v0.4.1/v0.4.2 and inline rendering bypassing the router.

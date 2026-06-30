@@ -50,6 +50,7 @@ export function destroyRouter(): void {
 
 function handleHashChange(): void {
   const { screen, params } = parseHash();
+  console.log('[router] hashchange →', screen, params);
   _onRouteChange?.(screen, params);
 }
 
@@ -58,6 +59,7 @@ function handleHashChange(): void {
  */
 export function navigate(screen: Screen, params: RouteParams = {}): void {
   const hash = buildHash(screen, params);
+  console.log('[router] navigate →', screen, params, 'hash:', hash);
   if (window.location.hash !== `#${hash}`) {
     window.location.hash = hash;
   } else {

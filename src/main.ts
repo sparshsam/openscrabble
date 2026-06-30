@@ -161,8 +161,12 @@ async function init(): Promise<void> {
 
 function renderScreen(screen: Screen, params: Record<string, any>): void {
   const root = document.getElementById('app');
-  if (!root) return;
+  if (!root) {
+    console.error('[renderScreen] #app not found');
+    return;
+  }
 
+  console.log('[renderScreen] screen:', screen, 'params:', JSON.stringify(params));
   currentScreen = screen;
   currentComponent = null;
   root.innerHTML = '';
@@ -236,6 +240,7 @@ function showGame(params: Record<string, any>, root: HTMLElement): void {
     // Load by gameId from per-game save
     const data = GamePersistence.load(gameId);
     if (data) {
+      console.log('[showGame] loaded save for gameId:', gameId);
       const game = GamePersistence.restoreGame(data);
       gameUI = new GameUI(root, game, () => {
         navigate('hub');
@@ -252,6 +257,7 @@ function showGame(params: Record<string, any>, root: HTMLElement): void {
       // Only use legacy if it matches the game record's player names
       const record = getGameById(gameId);
       if (record) {
+        console.log('[showGame] loaded legacy save for gameId:', gameId);
         const game = GamePersistence.restoreGame(legacyData);
         gameUI = new GameUI(root, game, () => {
           navigate('hub');
@@ -263,16 +269,34 @@ function showGame(params: Record<string, any>, root: HTMLElement): void {
       }
     }
 
-    // No save found — mark as abandoned and redirect
+    // No save found — check if metadata record exists (new game)
     const record = getGameById(gameId);
+    if (record && record.status === 'active') {
+      console.log('[showGame] no save found, creating initial state from metadata record:', gameId, record.players);
+      // Create game from the record's player names
+      const game = new Game(record.players[0] || 'Player 1', record.players[1] || 'Player 2');
+      // Save it immediately so it becomes resumable
+      GamePersistence.save(game, gameId);
+      gameUI = new GameUI(root, game, () => {
+        navigate('hub');
+      }, (scores, turnNumber) => {
+        touchActiveGame(gameId, scores, turnNumber);
+      });
+      currentComponent = gameUI;
+      return;
+    }
+
+    // No save and no metadata — mark as abandoned and redirect
     if (record && record.status === 'active') {
       updateGameRecord(gameId, { status: 'abandoned', completedDate: new Date().toISOString() });
     }
+    console.warn('[showGame] invalid gameId, redirecting to hub:', gameId);
     navigate('hub');
     return;
   }
 
   // No gameId — go to hub (new game must go through #new-game)
+  console.warn('[showGame] no gameId provided, redirecting to hub');
   navigate('hub');
 }
 
