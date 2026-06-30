@@ -963,11 +963,146 @@ body {
 
 .actions-bar {
   display: flex;
+  flex-direction: column;
   gap: var(--space-2);
   width: 100%;
-  flex-wrap: wrap;
-  justify-content: center;
+  align-items: center;
   padding: var(--space-1) 0;
+}
+
+/* ── Redesigned Submit Button (v0.4.9) ───────── */
+.submit-wrapper {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.btn-submit {
+  width: 100%;
+  padding: 16px var(--space-6) !important;
+  border-radius: var(--radius-lg) !important;
+  background: var(--accent) !important;
+  color: #fff;
+  border: none;
+  font-size: var(--text-md);
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+  -webkit-tap-highlight-color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.btn-submit:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.btn-submit:hover:not(:disabled) {
+  opacity: 0.92;
+}
+
+.btn-submit:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.submit-icon {
+  font-size: 1.1rem;
+  font-weight: var(--font-bold);
+}
+
+.submit-label {
+  font-weight: var(--font-bold);
+  flex: 1;
+  text-align: center;
+}
+
+.submit-score {
+  font-size: var(--text-sm);
+  font-weight: var(--font-bold);
+  opacity: 0.9;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── More Actions Drawer (v0.4.9) ────────────── */
+.more-actions-container {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.btn-more-toggle {
+  width: 100%;
+  padding: 10px var(--space-4) !important;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  font-family: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  text-align: center;
+  transition: color 0.15s;
+}
+
+.btn-more-toggle:hover {
+  color: var(--text-secondary);
+}
+
+.btn-more-toggle.open {
+  color: var(--accent);
+}
+
+.more-actions-drawer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  overflow: hidden;
+  max-height: 0;
+  transition: max-height 0.3s ease, padding 0.3s ease;
+  width: 100%;
+  justify-content: center;
+}
+
+.more-actions-drawer.open {
+  max-height: 200px;
+  padding: var(--space-2) 0;
+}
+
+.btn-drawer {
+  padding: 8px 14px !important;
+  background: var(--bg-surface) !important;
+  border: 1px solid var(--border-visible);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  font-family: inherit;
+  border-radius: var(--radius-full) !important;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn-drawer:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.btn-drawer:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.btn-drawer-danger {
+  color: var(--error) !important;
+  border-color: var(--error) !important;
+}
+
+.btn-drawer-danger:hover:not(:disabled) {
+  background: rgba(255, 77, 77, 0.06) !important;
 }
 
 /* ── Buttons — all pills per Design Playbook ──── */
@@ -1579,6 +1714,20 @@ body {
   .actions-bar {
     gap: var(--space-1);
     padding: 0;
+  }
+
+  .btn-submit {
+    padding: 14px var(--space-4) !important;
+    font-size: var(--text-sm);
+  }
+
+  .submit-score {
+    font-size: var(--text-xs);
+  }
+
+  .btn-more-toggle {
+    padding: 8px var(--space-3) !important;
+    font-size: 0.6rem;
   }
 
   .rack-slot {

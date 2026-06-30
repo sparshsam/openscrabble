@@ -110,6 +110,17 @@ export class GameUI {
     const state = this.game.getState();
     this.root.innerHTML = '';
     this.root.appendChild(this.createGameContainer(state));
+
+    // Auto-scroll board into view when tiles are placed
+    const pendingCount = this.game.getPendingTiles().length;
+    if (pendingCount > 0) {
+      const boardEl = this.root.querySelector('.board-container');
+      if (boardEl) {
+        setTimeout(() => {
+          boardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 50);
+      }
+    }
   }
 
   // ─── Layout ──────────────────────────────────────────
@@ -121,12 +132,12 @@ export class GameUI {
     container.appendChild(this.createHeader(state));
     container.appendChild(this.createScoreDisplay(state));
     container.appendChild(this.createBoard(state));
+    container.appendChild(this.createRack(state));
 
     const preview = this.game.getPendingTiles().length > 0 ? this.game.previewMove() : null;
     container.appendChild(this.createLivePreview(preview));
     container.appendChild(this.createActionsBar(state));
     container.appendChild(this.createLastMoveSummary());
-    container.appendChild(this.createRack(state));
     container.appendChild(this.createMessageArea());
 
     return container;
@@ -632,23 +643,50 @@ export class GameUI {
       const preview = pendingCount > 0 ? this.game.previewMove() : null;
       const isMoveInvalid = preview !== null && !preview.valid;
 
+      // ── Redesigned Submit Button ──
+      const submitWrapper = document.createElement('div');
+      submitWrapper.className = 'submit-wrapper';
+
       const submitBtn = document.createElement('button');
-      submitBtn.className = 'btn btn-primary';
-      submitBtn.textContent = isMoveInvalid ? 'Word Not Valid' : 'Submit Word';
+      submitBtn.className = 'btn btn-submit';
       submitBtn.disabled = pendingCount === 0 || isMoveInvalid;
-      submitBtn.title = isMoveInvalid ? (preview?.error ?? 'Fix the word before submitting') : '';
+      if (pendingCount > 0 && !isMoveInvalid) {
+        submitBtn.innerHTML = `<span class="submit-icon">✓</span><span class="submit-label">Submit Word</span><span class="submit-score">${preview!.totalScore} pts</span>`;
+      } else if (isMoveInvalid) {
+        submitBtn.innerHTML = `<span class="submit-icon">✕</span><span class="submit-label">Fix Word</span>`;
+        submitBtn.title = preview?.error ?? 'Fix the word before submitting';
+      } else {
+        submitBtn.innerHTML = `<span class="submit-icon">▸</span><span class="submit-label">Place tiles</span>`;
+      }
       submitBtn.addEventListener('click', () => {
         const result = this.game.submitWord();
         this.selectedTile = null;
         this.save();
         this.render();
-        // Show message after render so it persists on the fresh message element
         this.showMessage(result);
       });
-      actions.appendChild(submitBtn);
+      submitWrapper.appendChild(submitBtn);
+      actions.appendChild(submitWrapper);
 
+      // ── More Actions Drawer ──
+      const moreContainer = document.createElement('div');
+      moreContainer.className = 'more-actions-container';
+
+      const moreToggle = document.createElement('button');
+      moreToggle.className = 'btn btn-more-toggle';
+      moreToggle.textContent = '··· More';
+      moreToggle.addEventListener('click', () => {
+        moreDrawer.classList.toggle('open');
+        moreToggle.classList.toggle('open');
+      });
+      moreContainer.appendChild(moreToggle);
+
+      const moreDrawer = document.createElement('div');
+      moreDrawer.className = 'more-actions-drawer';
+
+      // Clear All
       const clearBtn = document.createElement('button');
-      clearBtn.className = 'btn btn-secondary';
+      clearBtn.className = 'btn btn-drawer';
       clearBtn.textContent = 'Clear All';
       clearBtn.disabled = pendingCount === 0;
       clearBtn.addEventListener('click', () => {
@@ -656,11 +694,14 @@ export class GameUI {
         this.selectedTile = null;
         this.save();
         this.render();
+        moreDrawer.classList.remove('open');
+        moreToggle.classList.remove('open');
       });
-      actions.appendChild(clearBtn);
+      moreDrawer.appendChild(clearBtn);
 
+      // Undo Last
       const undoBtn = document.createElement('button');
-      undoBtn.className = 'btn';
+      undoBtn.className = 'btn btn-drawer';
       undoBtn.textContent = 'Undo Last';
       undoBtn.disabled = pendingCount === 0;
       undoBtn.addEventListener('click', () => {
@@ -669,33 +710,39 @@ export class GameUI {
         this.save();
         this.render();
       });
-      actions.appendChild(undoBtn);
+      moreDrawer.appendChild(undoBtn);
 
+      // Pass
       const passBtn = document.createElement('button');
-      passBtn.className = 'btn';
+      passBtn.className = 'btn btn-drawer';
       passBtn.textContent = 'Pass';
       passBtn.addEventListener('click', () => {
         this.game.passTurn();
         this.selectedTile = null;
         this.save();
         this.render();
+        moreDrawer.classList.remove('open');
+        moreToggle.classList.remove('open');
       });
-      actions.appendChild(passBtn);
+      moreDrawer.appendChild(passBtn);
 
+      // Swap
       const swapBtn = document.createElement('button');
-      swapBtn.className = 'btn';
+      swapBtn.className = 'btn btn-drawer';
       swapBtn.textContent = 'Swap';
       swapBtn.disabled = state.bag.length === 0;
       swapBtn.addEventListener('click', () => {
         this.game.enterSwapMode();
         this.render();
+        moreDrawer.classList.remove('open');
+        moreToggle.classList.remove('open');
       });
-      actions.appendChild(swapBtn);
+      moreDrawer.appendChild(swapBtn);
 
-      // Undo submitted move (disabled if pending tiles exist or no moves recorded)
+      // Undo Move
       const canUndo = state.moveHistory.length > 0 && pendingCount === 0;
       const undoMoveBtn = document.createElement('button');
-      undoMoveBtn.className = 'btn btn-secondary';
+      undoMoveBtn.className = 'btn btn-drawer';
       undoMoveBtn.textContent = 'Undo Move';
       undoMoveBtn.disabled = !canUndo;
       undoMoveBtn.title = canUndo ? 'Undo last submitted move' : pendingCount > 0 ? 'Clear pending tiles first' : '';
@@ -709,32 +756,43 @@ export class GameUI {
             this.selectedTile = null;
             this.save();
             this.render();
+            moreDrawer.classList.remove('open');
+            moreToggle.classList.remove('open');
           }
         );
       });
-      actions.appendChild(undoMoveBtn);
+      moreDrawer.appendChild(undoMoveBtn);
 
-      // Move history toggle
+      // Move History
       if (state.moveHistory.length > 0) {
         const historyBtn = document.createElement('button');
-        historyBtn.className = 'btn';
+        historyBtn.className = 'btn btn-drawer';
         historyBtn.textContent = `History (${state.moveHistory.length})`;
         historyBtn.addEventListener('click', () => {
           this.showMoveHistory();
+          moreDrawer.classList.remove('open');
+          moreToggle.classList.remove('open');
         });
-        actions.appendChild(historyBtn);
+        moreDrawer.appendChild(historyBtn);
       }
 
-      // ── Resign / Quit ──
+      // Resign / Quit
       const hasMoves = this.game.moveRecords.length > 0;
       const resignBtn = document.createElement('button');
-      resignBtn.className = 'btn btn-danger-outline';
+      resignBtn.className = 'btn btn-drawer btn-drawer-danger';
       resignBtn.textContent = hasMoves ? 'Resign' : 'Quit Game';
       resignBtn.title = hasMoves
         ? 'Forfeit this game — opponent wins'
         : 'Remove this game — no moves recorded, no penalty';
-      resignBtn.addEventListener('click', () => this.confirmQuit(hasMoves));
-      actions.appendChild(resignBtn);
+      resignBtn.addEventListener('click', () => {
+        this.confirmQuit(hasMoves);
+        moreDrawer.classList.remove('open');
+        moreToggle.classList.remove('open');
+      });
+      moreDrawer.appendChild(resignBtn);
+
+      moreContainer.appendChild(moreDrawer);
+      actions.appendChild(moreContainer);
 
     } else if (state.phase === 'gameover') {
       const summary = this.game.getSummary();

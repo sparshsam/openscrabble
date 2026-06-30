@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.4.10 — Game UI Overhaul (2026-06-29)
+
+### Changed
+- **Rack moved directly below board**: The tile rack now sits right after the board in the layout, keeping it visible in viewport. All action buttons moved below the rack.
+- **Submit button redesigned**: Large full-width button with ✓ icon, "Submit Word" label, and score preview (e.g., "14 pts"). Shows "Fix Word" with ✕ when invalid, "Place tiles" with ▸ when empty. Subtle scale-down press effect.
+- **Non-essential actions moved to "··· More" drawer**: Clear All, Undo Last, Pass, Swap, Undo Move, History, and Resign/Quit are now in a collapsible drawer below the Submit button. Keeps the board area clean with only essential controls visible.
+- **Board auto-scroll**: When a tile is placed on the board, the viewport smoothly scrolls to center the board with the rack still visible.
+- **CSS cleanup**: Added `.btn-submit`, `.submit-wrapper`, `.btn-more-toggle`, `.more-actions-drawer`, `.btn-drawer` classes. Actions bar changed from `flex-wrap` to `flex-direction: column`.
+
 ## v0.4.9 — Turn History + Word Definitions Polish (2026-06-29)
 
 ### Added
