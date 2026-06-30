@@ -509,7 +509,7 @@ body {
 .game-container {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-2);
   align-items: center;
   width: 100%;
 }
@@ -1589,11 +1589,11 @@ body {
 
 .message-area {
   width: 100%;
-  min-height: 28px;
+  min-height: 0;
   text-align: center;
   font-size: var(--text-sm);
   font-weight: var(--font-semibold);
-  padding: 4px;
+  padding: 2px 4px;
   transition: all 0.2s;
 }
 
@@ -1773,15 +1773,28 @@ body {
   }
 
   .game-container {
-    gap: var(--space-2);
+    gap: var(--space-1);
   }
 
   .game-header {
-    padding: var(--space-2) 0;
+    padding: var(--space-1) 0;
   }
 
   .game-header-title {
     font-size: var(--text-md);
+  }
+
+  .score-display {
+    padding: var(--space-1) 0;
+    gap: var(--space-1);
+  }
+
+  .player-score {
+    padding: 2px 8px;
+  }
+
+  .board-container {
+    padding: 3px;
   }
 
   .turn-indicator {
@@ -1793,15 +1806,6 @@ body {
     width: 34px;
     height: 34px;
     font-size: 1rem;
-  }
-
-  .score-display {
-    gap: var(--space-1);
-    padding: var(--space-1) 0;
-  }
-
-  .player-score {
-    padding: 3px 8px;
   }
 
   .player-name {
@@ -1822,7 +1826,7 @@ body {
   }
 
   .preview-bar {
-    min-height: 24px;
+    min-height: 20px;
     padding: 2px 8px;
     font-size: var(--text-xs);
   }
@@ -1870,15 +1874,19 @@ body {
     font-size: 0.6rem;
   }
 
+  .rack-header {
+    margin-bottom: 2px;
+  }
+
   .game-over-banner {
     padding: var(--space-4) 0;
     font-size: var(--text-lg);
   }
 
   .message-area {
-    min-height: 22px;
+    min-height: 0;
     font-size: var(--text-xs);
-    padding: 2px;
+    padding: 1px 2px;
   }
 }
 

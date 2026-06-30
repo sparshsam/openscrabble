@@ -132,13 +132,14 @@ export class GameUI {
     container.appendChild(this.createHeader(state));
     container.appendChild(this.createScoreDisplay(state));
     container.appendChild(this.createBoard(state));
-    container.appendChild(this.createRack(state));
 
     const preview = this.game.getPendingTiles().length > 0 ? this.game.previewMove() : null;
     container.appendChild(this.createLivePreview(preview));
+    container.appendChild(this.createMessageArea());
+
+    container.appendChild(this.createRack(state));
     container.appendChild(this.createActionsBar(state));
     container.appendChild(this.createLastMoveSummary());
-    container.appendChild(this.createMessageArea());
 
     return container;
   }
