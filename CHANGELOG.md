@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.4.6 — Collins Dictionary Enforcement + Resign Flow (2026-06-29)
+
+### Fixed
+- **Dictionary enforcement**: Added `REJECTED_WORDS` set in `WordValidator.ts`. Words in the rejection list are blocked even if present in the bundled SOWPODS word list. `KIL` is rejected as a fringe inclusion not recognized in standard Collins UK Scrabble play. LOONIE remains accepted.
+- **No unsafe fallback**: The `REJECTED_WORDS` check runs after 2-letter validation and before the main dictionary lookup — no prefix/stem/partial-word acceptance exists.
+
+### Added
+- **Resign button** in the game UI actions bar (during placing phase)
+- **Resign confirmation modal** — uses in-app modal, not `browser confirm()`
+- `resignGame()` in `LocalGameStore.ts` — sets status to `completed`, winner to opponent (for 2-player), records scores/turns
+- `btn-danger-outline` CSS class — red outline button for resign action
+- 3 dictionary regression tests: KIL rejected, LOONIE still accepted after Collins enforcement
+- v0.4.6 section in `docs/DICTIONARY.md`
+
+### Changed
+- GameUI imports `resignGame` and `navigate` for resign flow
+- Resigned games show in History as `completed` with opponent as winner
+
 ## v0.4.5 — Dictionary Integrity + Per-Game Save Fix (2026-06-29)
 
 Critical fixes: LOONIE now accepted as a valid word. Resuming a saved game now restores exact board/rack state instead of resetting.

@@ -4,6 +4,8 @@ import { GamePersistence } from '../game/Persistence.js';
 import { getPremiumType } from '../game/Board.js';
 import { type WordDefinition, fetchDefinition } from '../game/WordDefinitions.js';
 import { WordValidator } from '../game/WordValidator.js';
+import { resignGame } from '../lib/LocalGameStore.js';
+import { navigate } from '../lib/routes.js';
 
 /**
  * Add a hold/long-press listener to an element.
@@ -689,6 +691,14 @@ export class GameUI {
         });
         actions.appendChild(historyBtn);
       }
+
+      // ── Resign ──
+      const resignBtn = document.createElement('button');
+      resignBtn.className = 'btn btn-danger-outline';
+      resignBtn.textContent = 'Resign';
+      resignBtn.addEventListener('click', () => this.confirmResign());
+      actions.appendChild(resignBtn);
+
     } else if (state.phase === 'gameover') {
       const summary = this.game.getSummary();
       const winner = summary.winner;
@@ -1006,6 +1016,31 @@ export class GameUI {
   }
 
   // ─── Helpers ─────────────────────────────────────────
+
+  private confirmResign(): void {
+    const state = this.game.getState();
+    const playerName = state.players[state.currentPlayerIndex]!.name;
+    this.showConfirmModal(
+      'Resign Game',
+      `${playerName}, are you sure you want to resign? The other player will win.`,
+      'Resign',
+      () => {
+        // Record resignation
+        this.save();
+        if (this.gameId) {
+          const s = this.game.getState();
+          resignGame(
+            this.gameId,
+            s.players.map((p) => p.score),
+            s.turnNumber,
+            s.currentPlayerIndex,
+            s.players.map((p) => p.name)
+          );
+        }
+        navigate('hub');
+      }
+    );
+  }
 
   private getPremiumLabel(premium: string): string {
     switch (premium) {

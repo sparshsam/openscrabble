@@ -160,4 +160,15 @@ describe('WordValidator', () => {
     expect(WordValidator.isValid('qzzq')).toBe(false);
     expect(WordValidator.isValid('asdfgh')).toBe(false);
   });
+
+  // ─── v0.4.6 Collins Enforcement ──────────────────────
+
+  it('rejects KIL (v0.4.6: rejected word list)', () => {
+    expect(WordValidator.isValid('KIL')).toBe(false);
+    expect(WordValidator.isValid('kil')).toBe(false);
+  });
+
+  it('still accepts LOONIE after Collins enforcement', () => {
+    expect(WordValidator.isValid('LOONIE')).toBe(true);
+  });
 });

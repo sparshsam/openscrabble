@@ -1018,6 +1018,16 @@ body {
   background: var(--bg-surface);
 }
 
+.btn-danger-outline {
+  background: transparent;
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.btn-danger-outline:hover {
+  background: rgba(255, 77, 77, 0.08);
+}
+
 .btn-icon {
   width: 40px;
   height: 40px;

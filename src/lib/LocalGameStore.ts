@@ -173,6 +173,32 @@ export function completeGameRecord(
 }
 
 /**
+ * Resign an active game. Records the result with the other player as winner.
+ * For 2-player games, sets winner to the opponent.
+ * For 3+ player games, marks as abandoned with a note.
+ */
+export function resignGame(
+  id: string,
+  scores: number[],
+  totalTurns: number,
+  resigningPlayerIndex: number,
+  players: string[]
+): void {
+  const winner = players.length === 2
+    ? players[1 - resigningPlayerIndex] ?? null
+    : null;
+  updateGameRecord(id, {
+    status: 'completed',
+    scores,
+    winner,
+    isTie: false,
+    totalTurns,
+    completedDate: new Date().toISOString(),
+    lastPlayedDate: new Date().toISOString(),
+  });
+}
+
+/**
  * Update the last-played timestamp and current scores for an active game.
  */
 export function touchActiveGame(
