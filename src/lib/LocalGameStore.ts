@@ -215,13 +215,15 @@ export function touchActiveGame(
 
 // ─── Stats ────────────────────────────────────────────
 
-export function computeStats(): PlayerStats {
+export function computeStats(currentUsername?: string): PlayerStats {
   const games = loadAllGames();
   const completed = games.filter((g) => g.status === 'completed');
 
   const stats: PlayerStats = {
     gamesPlayed: completed.length,
     gamesWon: 0,
+    gamesLost: 0,
+    winRate: 0,
     totalScore: 0,
     highestScore: 0,
     averageScore: 0,
@@ -234,6 +236,8 @@ export function computeStats(): PlayerStats {
 
   if (completed.length === 0) return stats;
 
+  const normalizedName = (name: string) => name.toLowerCase().trim();
+
   for (const game of completed) {
     const playerScore = Math.max(...game.scores);
     stats.totalScore += playerScore;
@@ -244,13 +248,26 @@ export function computeStats(): PlayerStats {
       stats.bestWord = game.bestWord;
       stats.bestWordScore = game.bestWordScore;
     }
-    // Determine if the current user won
-    // For simplicity, we check if winner is set and not a tie
-    if (!game.isTie && game.winner) {
-      stats.gamesWon += 1;
+
+    // Win/loss determination: match winner against current user
+    if (game.winner && !game.isTie) {
+      if (currentUsername && normalizedName(game.winner) === normalizedName(currentUsername)) {
+        stats.gamesWon += 1;
+      } else {
+        // Only count as loss if winner is another player and current user participated
+        const userParticipated = currentUsername
+          ? game.players.some((p) => normalizedName(p) === normalizedName(currentUsername))
+          : false;
+        if (userParticipated && game.winner) {
+          stats.gamesLost += 1;
+        }
+      }
     }
   }
 
+  if (stats.gamesPlayed > 0) {
+    stats.winRate = Math.round((stats.gamesWon / stats.gamesPlayed) * 100);
+  }
   stats.averageScore = Math.round(stats.totalScore / completed.length);
   return stats;
 }

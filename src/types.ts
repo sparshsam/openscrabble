@@ -114,6 +114,8 @@ export interface GameRecord {
 export interface PlayerStats {
   gamesPlayed: number;
   gamesWon: number;
+  gamesLost: number;
+  winRate: number; // 0-100, 0 when no games played
   totalScore: number;
   highestScore: number;
   averageScore: number;

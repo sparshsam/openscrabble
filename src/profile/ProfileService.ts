@@ -81,6 +81,8 @@ function getDefaultStats(): PlayerStats {
   return {
     gamesPlayed: 0,
     gamesWon: 0,
+    gamesLost: 0,
+    winRate: 0,
     totalScore: 0,
     highestScore: 0,
     averageScore: 0,

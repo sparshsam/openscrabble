@@ -26,7 +26,7 @@ export class ProfilePage {
     page.className = 'profile-page';
 
     const user = getCurrentUser();
-    const stats = computeStats();
+    const stats = computeStats(user?.username);
     const allGames = loadAllGames();
     const completed = allGames.filter((g) => g.status === 'completed');
 
@@ -71,10 +71,10 @@ export class ProfilePage {
     const statsGrid = document.createElement('div');
     statsGrid.className = 'profile-stats-grid';
     statsGrid.innerHTML = `
-      <div class="profile-stat"><span class="profile-stat-value">${stats.gamesPlayed}</span><span class="profile-stat-label">Played</span></div>
-      <div class="profile-stat"><span class="profile-stat-value">${stats.gamesWon}</span><span class="profile-stat-label">Won</span></div>
-      <div class="profile-stat"><span class="profile-stat-value">${stats.averageScore}</span><span class="profile-stat-label">Avg Score</span></div>
-      <div class="profile-stat"><span class="profile-stat-value">${stats.highestScore}</span><span class="profile-stat-label">Best Game</span></div>
+      <div class="profile-stat"><span class="profile-stat-value">${stats.gamesPlayed}</span><span class="profile-stat-label">Completed</span></div>
+      <div class="profile-stat"><span class="profile-stat-value">${stats.gamesWon}</span><span class="profile-stat-label">Wins</span></div>
+      <div class="profile-stat"><span class="profile-stat-value">${stats.gamesLost}</span><span class="profile-stat-label">Losses</span></div>
+      <div class="profile-stat"><span class="profile-stat-value">${stats.winRate}%</span><span class="profile-stat-label">Win Rate</span></div>
     `;
     statsSection.appendChild(statsGrid);
     page.appendChild(statsSection);
@@ -83,6 +83,8 @@ export class ProfilePage {
     const extStats = document.createElement('div');
     extStats.className = 'profile-ext-stats';
     extStats.innerHTML = `
+      <div class="profile-ext-stat"><span>Best Score</span><span>${stats.highestScore}</span></div>
+      <div class="profile-ext-stat"><span>Average Score</span><span>${stats.averageScore}</span></div>
       <div class="profile-ext-stat"><span>Total Score</span><span>${stats.totalScore}</span></div>
       <div class="profile-ext-stat"><span>Total Moves</span><span>${stats.totalMoves}</span></div>
       <div class="profile-ext-stat"><span>Bingos</span><span>${stats.bingos}</span></div>

@@ -8,6 +8,8 @@ import {
   getGameById,
   loadAllGames,
   clearAllGameRecords,
+  addGameRecord,
+  computeStats,
 } from '../src/lib/LocalGameStore.js';
 
 const SAVE_PREFIX = 'openscrabble_save_';
@@ -111,5 +113,102 @@ describe('LocalGameStore game creation', () => {
     const record = createActiveGameRecord(['Test', 'User'], 'custom-id-123');
     expect(record.id).toBe('custom-id-123');
     expect(getGameById('custom-id-123')).toBeDefined();
+  });
+});
+
+describe('computeStats', () => {
+  beforeEach(() => {
+    clearAllGameRecords();
+    const keys = Object.keys(storage);
+    for (const key of keys) {
+      if (key.startsWith('openscrabble_save_')) delete storage[key];
+    }
+  });
+
+  function addCompletedGame(
+    players: string[],
+    scores: number[],
+    winner: string | null,
+    isTie: boolean,
+    status: 'completed' | 'abandoned' | 'active' = 'completed'
+  ): void {
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    addGameRecord({
+      id,
+      status,
+      createdDate: now,
+      lastPlayedDate: now,
+      completedDate: now,
+      players,
+      scores,
+      winner,
+      isTie,
+      totalTurns: 10,
+      bestWord: 'CAT',
+      bestWordScore: 5,
+      totalMoves: 10,
+      bingos: 0,
+    });
+  }
+
+  it('counts wins when current user wins normally', () => {
+    addCompletedGame(['Alice', 'Bob'], [100, 80], 'Alice', false);
+    const stats = computeStats('Alice');
+    expect(stats.gamesPlayed).toBe(1);
+    expect(stats.gamesWon).toBe(1);
+    expect(stats.gamesLost).toBe(0);
+    expect(stats.winRate).toBe(100);
+  });
+
+  it('counts loss when current user resigns (opponent wins)', () => {
+    addCompletedGame(['Alice', 'Bob'], [50, 120], 'Bob', false);
+    const stats = computeStats('Alice');
+    expect(stats.gamesPlayed).toBe(1);
+    expect(stats.gamesWon).toBe(0);
+    expect(stats.gamesLost).toBe(1);
+    expect(stats.winRate).toBe(0);
+  });
+
+  it('counts win when opponent resigns (current user wins)', () => {
+    addCompletedGame(['Alice', 'Bob'], [120, 50], 'Alice', false);
+    const stats = computeStats('Alice');
+    expect(stats.gamesPlayed).toBe(1);
+    expect(stats.gamesWon).toBe(1);
+    expect(stats.gamesLost).toBe(0);
+    expect(stats.winRate).toBe(100);
+  });
+
+  it('active games do not count in stats', () => {
+    addCompletedGame(['Alice', 'Bob'], [100, 80], 'Alice', false, 'active');
+    const stats = computeStats('Alice');
+    expect(stats.gamesPlayed).toBe(0);
+    expect(stats.gamesWon).toBe(0);
+    expect(stats.gamesLost).toBe(0);
+  });
+
+  it('abandoned games without winner do not count as wins or losses', () => {
+    addCompletedGame(['Alice', 'Bob'], [30, 30], null, false, 'abandoned');
+    const stats = computeStats('Alice');
+    expect(stats.gamesPlayed).toBe(0);
+    expect(stats.gamesWon).toBe(0);
+    expect(stats.gamesLost).toBe(0);
+  });
+
+  it('case-insensitive name matching', () => {
+    addCompletedGame(['alice', 'bob'], [100, 80], 'Alice', false);
+    const stats = computeStats('ALICE');
+    expect(stats.gamesWon).toBe(1);
+  });
+
+  it('win rate with mixed results', () => {
+    addCompletedGame(['Alice', 'Bob'], [100, 80], 'Alice', false);
+    addCompletedGame(['Alice', 'Bob'], [60, 120], 'Bob', false);
+    addCompletedGame(['Alice', 'Bob'], [110, 90], 'Alice', false);
+    const stats = computeStats('Alice');
+    expect(stats.gamesPlayed).toBe(3);
+    expect(stats.gamesWon).toBe(2);
+    expect(stats.gamesLost).toBe(1);
+    expect(stats.winRate).toBe(67);
   });
 });
