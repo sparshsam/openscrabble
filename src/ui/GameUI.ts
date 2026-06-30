@@ -4,6 +4,8 @@ import { GamePersistence } from '../game/Persistence.js';
 import { getPremiumType } from '../game/Board.js';
 import { type WordDefinition, fetchDefinition } from '../game/WordDefinitions.js';
 import { WordValidator } from '../game/WordValidator.js';
+import { resignGame, finalizeGame, removeGameRecord } from '../lib/LocalGameStore.js';
+import { navigate } from '../lib/routes.js';
 
 /**
  * Add a hold/long-press listener to an element.
@@ -60,23 +62,45 @@ interface Selection {
 export class GameUI {
   private game: Game;
   private root: HTMLElement;
+  private gameId: string | null = null;
   private selectedTile: Selection | null = null;
   private swapSelection: Set<string> = new Set();
   private onBackToHome: (() => void) | null = null;
+  private onAutoSave: ((scores: number[], turnNumber: number) => void) | null = null;
 
   constructor(
     root: HTMLElement,
     game?: Game,
-    onBackToHome?: () => void
+    onBackToHome?: () => void,
+    onAutoSave?: (scores: number[], turnNumber: number) => void,
+    gameId?: string
   ) {
     this.root = root;
     this.game = game ?? new Game();
+    this.gameId = gameId ?? null;
     this.onBackToHome = onBackToHome ?? null;
-    this.render();
+    this.onAutoSave = onAutoSave ?? null;
+    try {
+      this.render();
+    } catch (e) {
+      console.error('[GameUI] render failed:', e);
+      showGameError(root, 'Failed to render game board. Please try starting a new game.');
+    }
   }
 
   private save(): void {
-    GamePersistence.save(this.game);
+    if (this.gameId) {
+      GamePersistence.save(this.game, this.gameId);
+    } else {
+      GamePersistence.save(this.game);
+    }
+    if (this.onAutoSave) {
+      const state = this.game.getState();
+      this.onAutoSave(
+        state.players.map((p) => p.score),
+        state.turnNumber
+      );
+    }
   }
 
   private render(): void {
@@ -86,6 +110,17 @@ export class GameUI {
     const state = this.game.getState();
     this.root.innerHTML = '';
     this.root.appendChild(this.createGameContainer(state));
+
+    // Auto-scroll board into view when tiles are placed
+    const pendingCount = this.game.getPendingTiles().length;
+    if (pendingCount > 0) {
+      const boardEl = this.root.querySelector('.board-container');
+      if (boardEl) {
+        setTimeout(() => {
+          boardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 50);
+      }
+    }
   }
 
   // ─── Layout ──────────────────────────────────────────
@@ -100,9 +135,11 @@ export class GameUI {
 
     const preview = this.game.getPendingTiles().length > 0 ? this.game.previewMove() : null;
     container.appendChild(this.createLivePreview(preview));
-    container.appendChild(this.createActionsBar(state));
-    container.appendChild(this.createRack(state));
     container.appendChild(this.createMessageArea());
+
+    container.appendChild(this.createRack(state));
+    container.appendChild(this.createActionsBar(state));
+    container.appendChild(this.createLastMoveSummary());
 
     return container;
   }
@@ -412,18 +449,83 @@ export class GameUI {
 
   // ─── Rack ────────────────────────────────────────────
 
+  private createLastMoveSummary(): HTMLElement {
+    const container = document.createElement('div');
+    container.className = 'last-move-summary';
+
+    const records = this.game.moveRecords;
+    if (records.length === 0) {
+      container.style.display = 'none';
+      return container;
+    }
+
+    const last = records[records.length - 1]!;
+    const words = last.words.map((w) =>
+      `<span class="last-move-word" data-word="${w.word}">"${w.word}" (+${w.score})</span>`
+    ).join(' + ');
+
+    container.innerHTML = `
+      <span class="last-move-label">Last Move</span>
+      <span class="last-move-detail">${words} → <strong>+${last.totalScore}</strong></span>
+    `;
+
+    // Make words tappable for definitions
+    container.querySelectorAll('.last-move-word').forEach((el) => {
+      const word = (el as HTMLElement).dataset.word!;
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.showWordDetails(word);
+      });
+    });
+
+    return container;
+  }
+
   private createRack(state: GameState): HTMLElement {
     const rackContainer = document.createElement('div');
     rackContainer.className = 'rack-container';
 
     const player = state.players[state.currentPlayerIndex]!;
     const pendingTileIds = new Set(this.game.getPendingTiles().map((t) => t.id));
+    const hasPending = this.game.getPendingTiles().length > 0;
+
+    // ── Rack Header ──
+    const rackHeader = document.createElement('div');
+    rackHeader.className = 'rack-header';
 
     const label = document.createElement('div');
     label.className = 'rack-label';
     label.textContent = `${player.name}'s Rack`;
-    rackContainer.appendChild(label);
+    rackHeader.appendChild(label);
 
+    // Clear All button inside rack (only visible when tiles are placed)
+    if (hasPending) {
+      const clearBtn = document.createElement('button');
+      clearBtn.className = 'btn rack-clear-btn';
+      clearBtn.innerHTML = '✕ Clear';
+      clearBtn.title = 'Return all pending tiles to rack';
+      clearBtn.addEventListener('click', () => {
+        this.game.clearPending();
+        this.selectedTile = null;
+        this.save();
+        this.render();
+      });
+      rackHeader.appendChild(clearBtn);
+    }
+
+    // Bag info + toggle
+    const bagInfo = document.createElement('button');
+    bagInfo.className = 'btn rack-bag-info';
+    bagInfo.innerHTML = `<span class="bag-dot">●</span> ${state.bag.length}`;
+    bagInfo.title = 'Show remaining tiles';
+    bagInfo.addEventListener('click', () => {
+      bagView.classList.toggle('open');
+    });
+    rackHeader.appendChild(bagInfo);
+
+    rackContainer.appendChild(rackHeader);
+
+    // ── Rack Tiles ──
     const rack = document.createElement('div');
     rack.className = 'tile-rack';
 
@@ -497,6 +599,39 @@ export class GameUI {
     }
 
     rackContainer.appendChild(rack);
+
+    // ── Bag View (collapsible) ──
+    const bagView = document.createElement('div');
+    bagView.className = 'bag-view';
+    bagView.id = 'bag-view-panel';
+
+    const cats = this.game.bag.getLetterCategoryCounts();
+    const counts = this.game.bag.getRemainingLetterCounts();
+
+    // Category row
+    const catRow = document.createElement('div');
+    catRow.className = 'bag-category-row';
+    catRow.innerHTML = `
+      <span class="bag-cat"><span class="bag-cat-dot bag-vowel">●</span> Vowels ${cats.vowels}</span>
+      <span class="bag-cat"><span class="bag-cat-dot bag-consonant">●</span> Consonants ${cats.consonants}</span>
+      <span class="bag-cat"><span class="bag-cat-dot bag-blank">●</span> Blanks ${cats.blanks}</span>
+    `;
+    bagView.appendChild(catRow);
+
+    // Letter grid
+    const letterGrid = document.createElement('div');
+    letterGrid.className = 'bag-letter-grid';
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    for (const ch of letters) {
+      const remaining = counts.get(ch) || 0;
+      const cell = document.createElement('span');
+      cell.className = `bag-letter-cell${remaining === 0 ? ' bag-letter-empty' : ''}`;
+      cell.innerHTML = `${ch}<span class="bag-letter-count">${remaining}</span>`;
+      letterGrid.appendChild(cell);
+    }
+    bagView.appendChild(letterGrid);
+
+    rackContainer.appendChild(bagView);
     return rackContainer;
   }
 
@@ -575,35 +710,50 @@ export class GameUI {
       const preview = pendingCount > 0 ? this.game.previewMove() : null;
       const isMoveInvalid = preview !== null && !preview.valid;
 
+      // ── Redesigned Submit Button ──
+      const submitWrapper = document.createElement('div');
+      submitWrapper.className = 'submit-wrapper';
+
       const submitBtn = document.createElement('button');
-      submitBtn.className = 'btn btn-primary';
-      submitBtn.textContent = isMoveInvalid ? 'Word Not Valid' : 'Submit Word';
+      submitBtn.className = 'btn btn-submit';
       submitBtn.disabled = pendingCount === 0 || isMoveInvalid;
-      submitBtn.title = isMoveInvalid ? (preview?.error ?? 'Fix the word before submitting') : '';
+      if (pendingCount > 0 && !isMoveInvalid) {
+        submitBtn.innerHTML = `<span class="submit-icon">✓</span><span class="submit-label">Submit Word</span><span class="submit-score">${preview!.totalScore} pts</span>`;
+      } else if (isMoveInvalid) {
+        submitBtn.innerHTML = `<span class="submit-icon">✕</span><span class="submit-label">Fix Word</span>`;
+        submitBtn.title = preview?.error ?? 'Fix the word before submitting';
+      } else {
+        submitBtn.innerHTML = `<span class="submit-icon">▸</span><span class="submit-label">Place tiles</span>`;
+      }
       submitBtn.addEventListener('click', () => {
         const result = this.game.submitWord();
         this.selectedTile = null;
         this.save();
         this.render();
-        // Show message after render so it persists on the fresh message element
         this.showMessage(result);
       });
-      actions.appendChild(submitBtn);
+      submitWrapper.appendChild(submitBtn);
+      actions.appendChild(submitWrapper);
 
-      const clearBtn = document.createElement('button');
-      clearBtn.className = 'btn btn-secondary';
-      clearBtn.textContent = 'Clear All';
-      clearBtn.disabled = pendingCount === 0;
-      clearBtn.addEventListener('click', () => {
-        this.game.clearPending();
-        this.selectedTile = null;
-        this.save();
-        this.render();
+      // ── More Actions Drawer ──
+      const moreContainer = document.createElement('div');
+      moreContainer.className = 'more-actions-container';
+
+      const moreToggle = document.createElement('button');
+      moreToggle.className = 'btn btn-more-toggle';
+      moreToggle.textContent = '··· More';
+      moreToggle.addEventListener('click', () => {
+        moreDrawer.classList.toggle('open');
+        moreToggle.classList.toggle('open');
       });
-      actions.appendChild(clearBtn);
+      moreContainer.appendChild(moreToggle);
 
+      const moreDrawer = document.createElement('div');
+      moreDrawer.className = 'more-actions-drawer';
+
+      // Undo Last
       const undoBtn = document.createElement('button');
-      undoBtn.className = 'btn';
+      undoBtn.className = 'btn btn-drawer';
       undoBtn.textContent = 'Undo Last';
       undoBtn.disabled = pendingCount === 0;
       undoBtn.addEventListener('click', () => {
@@ -612,33 +762,39 @@ export class GameUI {
         this.save();
         this.render();
       });
-      actions.appendChild(undoBtn);
+      moreDrawer.appendChild(undoBtn);
 
+      // Pass
       const passBtn = document.createElement('button');
-      passBtn.className = 'btn';
+      passBtn.className = 'btn btn-drawer';
       passBtn.textContent = 'Pass';
       passBtn.addEventListener('click', () => {
         this.game.passTurn();
         this.selectedTile = null;
         this.save();
         this.render();
+        moreDrawer.classList.remove('open');
+        moreToggle.classList.remove('open');
       });
-      actions.appendChild(passBtn);
+      moreDrawer.appendChild(passBtn);
 
+      // Swap
       const swapBtn = document.createElement('button');
-      swapBtn.className = 'btn';
+      swapBtn.className = 'btn btn-drawer';
       swapBtn.textContent = 'Swap';
       swapBtn.disabled = state.bag.length === 0;
       swapBtn.addEventListener('click', () => {
         this.game.enterSwapMode();
         this.render();
+        moreDrawer.classList.remove('open');
+        moreToggle.classList.remove('open');
       });
-      actions.appendChild(swapBtn);
+      moreDrawer.appendChild(swapBtn);
 
-      // Undo submitted move (disabled if pending tiles exist or no moves recorded)
+      // Undo Move
       const canUndo = state.moveHistory.length > 0 && pendingCount === 0;
       const undoMoveBtn = document.createElement('button');
-      undoMoveBtn.className = 'btn btn-secondary';
+      undoMoveBtn.className = 'btn btn-drawer';
       undoMoveBtn.textContent = 'Undo Move';
       undoMoveBtn.disabled = !canUndo;
       undoMoveBtn.title = canUndo ? 'Undo last submitted move' : pendingCount > 0 ? 'Clear pending tiles first' : '';
@@ -652,78 +808,162 @@ export class GameUI {
             this.selectedTile = null;
             this.save();
             this.render();
+            moreDrawer.classList.remove('open');
+            moreToggle.classList.remove('open');
           }
         );
       });
-      actions.appendChild(undoMoveBtn);
+      moreDrawer.appendChild(undoMoveBtn);
 
-      // Move history toggle
+      // Move History
       if (state.moveHistory.length > 0) {
         const historyBtn = document.createElement('button');
-        historyBtn.className = 'btn';
+        historyBtn.className = 'btn btn-drawer';
         historyBtn.textContent = `History (${state.moveHistory.length})`;
         historyBtn.addEventListener('click', () => {
           this.showMoveHistory();
+          moreDrawer.classList.remove('open');
+          moreToggle.classList.remove('open');
         });
-        actions.appendChild(historyBtn);
+        moreDrawer.appendChild(historyBtn);
       }
+
+      // Resign / Quit
+      const hasMoves = this.game.moveRecords.length > 0;
+      const resignBtn = document.createElement('button');
+      resignBtn.className = 'btn btn-drawer btn-drawer-danger';
+      resignBtn.textContent = hasMoves ? 'Resign' : 'Quit Game';
+      resignBtn.title = hasMoves
+        ? 'Forfeit this game — opponent wins'
+        : 'Remove this game — no moves recorded, no penalty';
+      resignBtn.addEventListener('click', () => {
+        this.confirmQuit(hasMoves);
+        moreDrawer.classList.remove('open');
+        moreToggle.classList.remove('open');
+      });
+      moreDrawer.appendChild(resignBtn);
+
+      moreContainer.appendChild(moreDrawer);
+      actions.appendChild(moreContainer);
+
     } else if (state.phase === 'gameover') {
       const summary = this.game.getSummary();
       const winner = summary.winner;
 
-      // Banner
-      const resultDiv = document.createElement('div');
-      resultDiv.className = 'game-over-banner';
+      // ── Result Screen Container ──
+      const resultScreen = document.createElement('div');
+      resultScreen.className = 'game-result-screen';
+      actions.appendChild(resultScreen);
+
+      // ── Winner Card ──
+      const winnerCard = document.createElement('div');
+      winnerCard.className = 'result-winner-card';
       if (winner) {
-        resultDiv.textContent = `🏆 ${winner.name} wins! ${winner.score} pts`;
+        winnerCard.innerHTML = `
+          <div class="result-crown">👑</div>
+          <div class="result-winner-name">${this.esc(winner.name)}</div>
+          <div class="result-winner-score">${winner.score} pts</div>
+          <div class="result-subtitle">Winner</div>
+        `;
       } else {
-        resultDiv.textContent = `🤝 Tie game! ${state.players[0]!.score} - ${state.players[1]!.score}`;
+        winnerCard.innerHTML = `
+          <div class="result-crown">🤝</div>
+          <div class="result-winner-name">Tie Game</div>
+          <div class="result-winner-score">${summary.finalScores[0]} – ${summary.finalScores[1]}</div>
+          <div class="result-subtitle">Nobody wins</div>
+        `;
       }
-      actions.appendChild(resultDiv);
+      resultScreen.appendChild(winnerCard);
 
-      // Summary stats
-      const statsDiv = document.createElement('div');
-      statsDiv.className = 'game-summary-stats';
-      statsDiv.innerHTML = `
-        <div class="summary-row"><span>Turns played</span><span>${summary.totalTurns}</span></div>
-        <div class="summary-row"><span>Best word</span><span>${summary.bestWord ? `"${summary.bestWord.word}" (${summary.bestWord.score} pts)` : '—'}</span></div>
-        <div class="summary-row"><span>${state.players[0]!.name}</span><span>${summary.finalScores[0]} pts</span></div>
-        <div class="summary-row"><span>${state.players[1]!.name}</span><span>${summary.finalScores[1]} pts</span></div>
+      // ── End Reason Badge ──
+      const endReasonText = this.game.endReason === 'resign'
+        ? `Resigned — ${state.players[state.currentPlayerIndex]!.name} resigned`
+        : 'Game completed';
+      const reasonBadge = document.createElement('div');
+      reasonBadge.className = 'result-end-reason';
+      reasonBadge.textContent = endReasonText;
+      resultScreen.appendChild(reasonBadge);
+
+      // ── Final Scores ──
+      const scoresSection = document.createElement('div');
+      scoresSection.className = 'result-scores-section';
+      scoresSection.innerHTML = `
+        <div class="result-section-title">Final Scores</div>
+        <div class="result-score-row">
+          <span class="result-score-name">${this.esc(state.players[0]!.name)}</span>
+          <span class="result-score-value">${summary.finalScores[0]}</span>
+        </div>
+        <div class="result-score-row">
+          <span class="result-score-name">${this.esc(state.players[1]!.name)}</span>
+          <span class="result-score-value">${summary.finalScores[1]}</span>
+        </div>
       `;
-      actions.appendChild(statsDiv);
+      resultScreen.appendChild(scoresSection);
 
-      // History button
-      if (summary.moveHistory.length > 0) {
-        const historyBtn = document.createElement('button');
-        historyBtn.className = 'btn';
-        historyBtn.textContent = 'View Full History';
-        historyBtn.addEventListener('click', () => {
-          this.showMoveHistory();
-        });
-        actions.appendChild(historyBtn);
-      }
+      // ── Game Stats ──
+      const statsSection = document.createElement('div');
+      statsSection.className = 'result-stats-section';
+      statsSection.innerHTML = `
+        <div class="result-stat-row">
+          <span>Total Turns</span><span>${summary.totalTurns}</span>
+        </div>
+        <div class="result-stat-row">
+          <span>Best Word</span><span>${summary.bestWord ? `"${summary.bestWord.word}" (${summary.bestWord.score})` : '—'}</span>
+        </div>
+      `;
+      resultScreen.appendChild(statsSection);
 
-      const newGameBtn = document.createElement('button');
-      newGameBtn.className = 'btn btn-primary';
-      newGameBtn.textContent = 'New Game';
-      newGameBtn.addEventListener('click', () => {
+      // ── Actions ──
+      const resultActions = document.createElement('div');
+      resultActions.className = 'result-actions';
+
+      const rematchBtn = document.createElement('button');
+      rematchBtn.className = 'btn btn-primary result-btn';
+      rematchBtn.textContent = '🔄 Rematch';
+      rematchBtn.addEventListener('click', () => {
         GamePersistence.clear();
+        if (this.gameId) {
+          const s = this.game.getState();
+          const scores = s.players.map((p) => p.score);
+          const bestWord = this.game.getSummary().bestWord;
+          finalizeGame(this.gameId, scores, winner?.name ?? null, !winner, s.turnNumber, bestWord?.word ?? null, bestWord?.score ?? 0, s.turnNumber, 0);
+        }
         this.game = new Game(
           this.game.players[0]!.name,
           this.game.players[1]!.name
         );
+        this.game.endReason = 'normal';
         this.render();
       });
-      actions.appendChild(newGameBtn);
+      resultActions.appendChild(rematchBtn);
 
-      const homeBtn = document.createElement('button');
-      homeBtn.className = 'btn';
-      homeBtn.textContent = 'Home';
-      homeBtn.addEventListener('click', () => {
+      const hubBtn = document.createElement('button');
+      hubBtn.className = 'btn result-btn';
+      hubBtn.textContent = '🏠 Home';
+      hubBtn.addEventListener('click', () => {
         GamePersistence.clear();
+        if (this.gameId) {
+          const s = this.game.getState();
+          const scores = s.players.map((p) => p.score);
+          const bestWord = this.game.getSummary().bestWord;
+          finalizeGame(this.gameId, scores, winner?.name ?? null, !winner, s.turnNumber, bestWord?.word ?? null, bestWord?.score ?? 0, s.turnNumber, 0);
+        }
         this.onBackToHome?.();
       });
-      actions.appendChild(homeBtn);
+      resultActions.appendChild(hubBtn);
+
+      // Show Full History button
+      if (summary.moveHistory.length > 0) {
+        const historyBtn = document.createElement('button');
+        historyBtn.className = 'btn result-btn result-btn-secondary';
+        historyBtn.textContent = `📋 Full History (${summary.moveHistory.length})`;
+        historyBtn.addEventListener('click', () => {
+          this.showMoveHistory();
+        });
+        resultActions.appendChild(historyBtn);
+      }
+
+      resultScreen.appendChild(resultActions);
     }
 
     return actions;
@@ -745,16 +985,18 @@ export class GameUI {
     if (result.success) {
       const wordsText = result.words.map((w) => `"${w.word}"`).join(', ');
       const bingoNote = result.totalScore >= 57 ? ' 🎉 Bingo!' : '';
-      msgEl.textContent = `${wordsText} → +${result.totalScore} pts${bingoNote}`;
+      msgEl.innerHTML = `${wordsText} → +${result.totalScore} pts${bingoNote}`;
       msgEl.className = 'message-area success';
     } else {
-      msgEl.textContent = result.error ?? 'Invalid move';
+      const errorText = result.error ?? 'Invalid move';
+      // Add dictionary source context to error
+      msgEl.innerHTML = `✕ ${errorText} <span class="msg-dict-source">(Collins UK-style)</span>`;
       msgEl.className = 'message-area error';
     }
 
     setTimeout(() => {
       msgEl.className = 'message-area';
-      msgEl.textContent = '';
+      msgEl.innerHTML = '';
     }, 6000);
   }
 
@@ -785,6 +1027,12 @@ export class GameUI {
     }`;
     validBadge.textContent = isValid ? '✓ Valid word' : '✕ Not in dictionary';
     dialog.appendChild(validBadge);
+
+    // Dictionary source
+    const sourceLabel = document.createElement('div');
+    sourceLabel.style.cssText = 'font-size:0.65rem;color:var(--text-tertiary);margin-bottom:10px;';
+    sourceLabel.textContent = 'Dictionary: Collins UK-style';
+    dialog.appendChild(sourceLabel);
 
     const content = document.createElement('div');
     content.className = 'blank-picker-subtitle';
@@ -866,38 +1114,37 @@ export class GameUI {
       dialog.appendChild(empty);
     } else {
       const list = document.createElement('div');
-      list.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin:8px 0 4px;';
+      list.className = 'history-modal-list';
 
       for (const rec of records) {
         const item = document.createElement('div');
-        item.style.cssText = 'display:flex;flex-direction:column;gap:2px;padding:6px 8px;border-radius:6px;background:var(--bg-card-secondary);font-size:0.78rem;';
+        item.className = 'history-list-item';
 
         const header = document.createElement('div');
-        header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;';
-        header.innerHTML = `<span style="font-weight:600;">T${rec.turnNumber} · ${this.esc(rec.playerName)}</span><span style="font-weight:700;">${rec.totalScore > 0 ? '+' : ''}${rec.totalScore} pts</span>`;
+        header.className = 'history-item-header';
+        header.innerHTML = `<span class="history-item-turn">T${rec.turnNumber} · ${this.esc(rec.playerName)}</span><span class="history-item-score">${rec.totalScore > 0 ? '+' : ''}${rec.totalScore}</span>`;
         item.appendChild(header);
 
         if (rec.words.length > 0) {
           const wordsDiv = document.createElement('div');
-          wordsDiv.style.cssText = 'display:flex;flex-wrap:wrap;gap:3px;';
+          wordsDiv.className = 'history-item-words';
           for (const w of rec.words) {
             const wordSpan = document.createElement('span');
-            wordSpan.className = 'preview-word';
+            wordSpan.className = 'history-item-word';
             wordSpan.textContent = `"${w.word}" (+${w.score})`;
-            wordSpan.style.fontSize = '0.75rem';
             wordSpan.addEventListener('click', () => this.showWordDetails(w.word));
             wordsDiv.appendChild(wordSpan);
           }
           item.appendChild(wordsDiv);
         } else {
           const desc = document.createElement('div');
-          desc.style.cssText = 'color:var(--text-tertiary);font-size:0.7rem;';
+          desc.className = 'history-item-desc';
           desc.textContent = rec.moveDescription;
           item.appendChild(desc);
         }
 
         const cumScore = document.createElement('div');
-        cumScore.style.cssText = 'color:var(--text-tertiary);font-size:0.65rem;text-align:right;margin-top:1px;';
+        cumScore.className = 'history-item-total';
         cumScore.textContent = `Total: ${rec.cumulativeScore} pts`;
         item.appendChild(cumScore);
 
@@ -985,6 +1232,51 @@ export class GameUI {
 
   // ─── Helpers ─────────────────────────────────────────
 
+  private confirmQuit(hasMoves: boolean): void {
+    const state = this.game.getState();
+    const playerName = state.players[state.currentPlayerIndex]!.name;
+
+    if (hasMoves) {
+      // Resign — opponent wins
+      this.showConfirmModal(
+        'Resign Game',
+        `${playerName}, are you sure you want to resign? The other player will win.`,
+        'Resign',
+        () => {
+          this.game.endReason = 'resign';
+          this.save();
+          if (this.gameId) {
+            const s = this.game.getState();
+            resignGame(
+              this.gameId,
+              s.players.map((p) => p.score),
+              s.turnNumber,
+              s.currentPlayerIndex,
+              s.players.map((p) => p.name)
+            );
+          }
+          navigate('hub');
+        }
+      );
+    } else {
+      // Quit — no moves made, just delete the record
+      this.showConfirmModal(
+        'Quit Game',
+        `${playerName}, quit this game? No moves have been made — no loss recorded.`,
+        'Quit',
+        () => {
+          if (this.gameId) {
+            // Remove the game record entirely
+            removeGameRecord(this.gameId);
+            // Also remove any save data
+            GamePersistence.clear(this.gameId);
+          }
+          navigate('hub');
+        }
+      );
+    }
+  }
+
   private getPremiumLabel(premium: string): string {
     switch (premium) {
       case 'tw': return 'TW';
@@ -1000,4 +1292,21 @@ export class GameUI {
     el.textContent = s;
     return el.innerHTML;
   }
+}
+
+/**
+ * showGameError — dev-facing visible error panel.
+ * Renders inside the given root element with a clear error message and retry link.
+ */
+function showGameError(root: HTMLElement, message: string): void {
+  root.innerHTML = '';
+  const container = document.createElement('div');
+  container.className = 'game-error-panel';
+  container.innerHTML = `
+    <div class="game-error-icon">⚠️</div>
+    <h2 class="game-error-title">Something went wrong</h2>
+    <p class="game-error-message">${message}</p>
+    <button class="btn btn-primary" onclick="window.location.hash='#hub'">Back to Hub</button>
+  `;
+  root.appendChild(container);
 }

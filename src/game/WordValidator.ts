@@ -32,6 +32,14 @@ const OFFICIAL_TWO_LETTER = new Set([
   'za',
 ]);
 
+// v0.4.6: Rejected words — words present in the bundled dictionary that should
+// not be accepted under Collins UK English-style dictionary enforcement.
+// These may be fringe inclusions from the SOWPODS-derived source that don't
+// belong in a standard Collins UK play dictionary.
+const REJECTED_WORDS = new Set([
+  "kil",   // not valid in standard Collins UK Scrabble play
+]);
+
 /**
  * Validates words against the built-in word list.
  * 2-letter words are validated immediately against the official list.
@@ -51,6 +59,8 @@ export class WordValidator {
     if (normalized.length === 2) {
       return OFFICIAL_TWO_LETTER.has(normalized);
     }
+    // v0.4.6: Reject words in the rejection list (Collins enforcement)
+    if (REJECTED_WORDS.has(normalized)) return false;
     // Longer words: check cached dictionary set (may return false if not yet loaded)
     const wordSet = getCachedWordSet();
     if (!wordSet) return false;

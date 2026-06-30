@@ -22,6 +22,7 @@ export class Game {
   moveHistory: TurnAction[] = [];
   moveRecords: MoveRecord[] = [];
   swapMode: boolean = false;
+  endReason: 'normal' | 'resign' = 'normal';
   private pendingTiles: Map<string, PlacedTile> = new Map();
   private stateSnapshots: string[] = [];
 
@@ -316,6 +317,7 @@ export class Game {
 
     if (this.bag.isEmpty() && this.currentPlayer.rack.every((t) => t === null)) {
       this.phase = 'gameover';
+      this.endReason = 'normal';
       this.applyEndgameScoring();
     } else {
       this.switchTurn();
@@ -344,6 +346,7 @@ export class Game {
 
     if (this.consecutivePasses >= 6) {
       this.phase = 'gameover';
+      this.endReason = 'normal';
       return;
     }
     this.switchTurn();

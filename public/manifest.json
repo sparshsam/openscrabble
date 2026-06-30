@@ -1,0 +1,19 @@
+{
+  "name": "OpenScrabble",
+  "short_name": "OpenScrabble",
+  "description": "Local two-player Scrabble game",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "orientation": "portrait",
+  "lang": "en",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/icon-1024.png",
+      "sizes": "1024x1024",
+      "type": "image/png"
+    }
+  ]
+}
