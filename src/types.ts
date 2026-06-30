@@ -70,6 +70,60 @@ export interface Player {
   isActive: boolean;
 }
 
+/** App user — guest or signed-in */
+export interface AppUser {
+  id: string;
+  username: string;
+  displayName?: string;
+  avatarUrl?: string;
+  isGuest: boolean;
+}
+
+/** Player setup for a multi-player local game */
+export interface PlayerSetup {
+  playerName: string;
+  isHuman: boolean;
+  profileId?: string;
+}
+
+// ─── v0.4.1: Local Game Record ──────────────────────
+
+export type GameRecordStatus = 'active' | 'completed' | 'abandoned';
+
+/** A game record stored locally in the game store */
+export interface GameRecord {
+  id: string;
+  status: GameRecordStatus;
+  createdDate: string;  // ISO
+  lastPlayedDate: string; // ISO
+  completedDate?: string; // ISO
+  players: string[];
+  scores: number[];
+  winner: string | null;
+  isTie: boolean;
+  totalTurns: number;
+  bestWord: string | null;
+  bestWordScore: number;
+  totalMoves: number;
+  bingos: number;
+  /** Linked save game key (openscrabble_save_<id>) for active games */
+  saveKey?: string;
+}
+
+/** Per-player aggregated stats computed from game history */
+export interface PlayerStats {
+  gamesPlayed: number;
+  gamesWon: number;
+  totalScore: number;
+  highestScore: number;
+  averageScore: number;
+  bestWord: string | null;
+  bestWordScore: number;
+  totalMoves: number;
+  bingos: number;
+  lastPlayedDate: string | null;
+}
+
 /** Full game state snapshot */
 export interface GameState {
   board: (Tile | null)[][];

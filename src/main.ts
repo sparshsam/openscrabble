@@ -1,12 +1,41 @@
+/**
+ * main.ts — App entry point for OpenScrabble v0.4.0.
+ *
+ * Features:
+ * - Hash routing (#hub, #game, #profile, #history, #settings, #onboarding)
+ * - First-time onboarding flow
+ * - Guest/local-first auth with optional Supabase
+ * - Main hub dashboard
+ * - Existing game screen preserved
+ * - Bottom navigation shell
+ */
+
 import './ui/styles.css';
+import type { Screen } from './lib/routes.js';
+import { initRouter, destroyRouter, navigate, parseHash, getInitialScreen } from './lib/routes.js';
+import { hasOnboarded, restoreSession, getCurrentUser } from './auth/AuthService.js';
+import { initSupabase } from './lib/supabase.js';
 import { HomePage } from './ui/HomePage.js';
 import { GameUI } from './ui/GameUI.js';
+import { HubPage } from './ui/HubPage.js';
+import { OnboardingPage } from './ui/OnboardingPage.js';
+import { ProfilePage } from './ui/ProfilePage.js';
+import { HistoryPage } from './ui/HistoryPage.js';
+import { SettingsPage } from './ui/SettingsPage.js';
+import { AppShell } from './lib/AppShell.js';
 import { GamePersistence } from './game/Persistence.js';
 import { loadWordSet, isWordSetLoaded } from './game/DictionaryLoader.js';
+import { Game } from './game/Game.js';
+import { createActiveGameRecord, getActiveGames } from './lib/LocalGameStore.js';
+import pkg from '../package.json';
 
-type Screen = 'home' | 'game';
+let appShell: AppShell | null = null;
+let hubPage: HubPage | null = null;
+let gameUI: GameUI | null = null;
+let currentScreen: Screen | null = null;
+let currentComponent: any = null;
 
-/* ─── Theme Toggle ───────────────────────────── */
+/* ─── Theme Toggle (moved to dedicated module for reuse) ── */
 
 function getSavedTheme(): string | null {
   return localStorage.getItem('openscrabble-theme');
@@ -53,7 +82,7 @@ function cycleTheme(): string {
   }
 }
 
-function createThemeToggle(): HTMLElement {
+export function createThemeToggle(): HTMLElement {
   const toggle = document.createElement('button');
   toggle.className = 'theme-toggle';
   toggle.setAttribute('aria-label', 'Toggle dark/light mode');
@@ -62,11 +91,9 @@ function createThemeToggle(): HTMLElement {
   if (saved) {
     applyTheme(saved);
   } else {
-    // If no saved preference, check actual system state
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     applyTheme(prefersDark ? 'dark' : 'light');
   }
-  // Set initial icon based on effective theme
   const effectiveTheme = document.documentElement.getAttribute('data-theme') ||
     (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   updateToggleIcon(toggle, effectiveTheme);
@@ -79,7 +106,7 @@ function createThemeToggle(): HTMLElement {
   return toggle;
 }
 
-/* ─── Standalone Modal (for use outside GameUI) ─── */
+/* ─── Modal ────────────────────────────────────── */
 
 function showModal(
   title: string,
@@ -138,87 +165,191 @@ function showModal(
 
 /* ─── App ────────────────────────────────────── */
 
-function init(): void {
+async function init(): Promise<void> {
   const root = document.getElementById('app');
   if (!root) {
     console.error('Root element #app not found');
     return;
   }
 
-  // Theme toggle — prepend to body so it sits at the edge
+  // Theme toggle — prepend to body
   const themeToggle = createThemeToggle();
   document.body.prepend(themeToggle);
 
-  let currentComponent: HomePage | GameUI | null = null;
+  // Initialize Supabase (non-blocking, will fail gracefully)
+  initSupabase();
 
-  function showHome(): void {
-    if (!isWordSetLoaded()) {
-      loadWordSet();
-    }
-    const hasSaved = GamePersistence.hasSavedGame();
-    const home = new HomePage(
-      root!,
-      (config) => {
-        if (hasSaved) {
-          showModal(
-            'New Game',
-            'Start a new game? Your saved game will be lost.',
-            'New Game',
-            () => {
-              GamePersistence.clear();
-              showGame(config.player1Name, config.player2Name);
-            }
-          );
-          return;
-        }
-        GamePersistence.clear();
-        showGame(config.player1Name, config.player2Name);
-      },
-      () => {
-        const data = GamePersistence.load();
-        if (data) {
-          const game = GamePersistence.restoreGame(data);
-          showGameFrom(game);
-        }
-      },
-      hasSaved
-    );
-    currentComponent = home;
-    home.render();
-  }
+  // Restore session (guest or Supabase)
+  await restoreSession();
 
-  function showGame(p1: string, p2: string): void {
-    if (!isWordSetLoaded()) {
-      loadWordSet();
-    }
-    const gameUI = new GameUI(root!, undefined, () => {
-      showHome();
+  // Initialize app shell
+  appShell = new AppShell(root);
+
+  // Initialize router
+  initRouter((screen: Screen, params) => {
+    renderScreen(screen, params);
+  });
+
+  // Determine initial screen
+  const onboarded = hasOnboarded();
+  const initial = getInitialScreen(onboarded);
+
+  // Adjust initial to hub if not explicitly routed
+  const { screen: hashScreen } = parseHash();
+  const screen = onboarded
+    ? (hashScreen === 'onboarding' ? 'hub' : hashScreen)
+    : 'onboarding';
+
+  renderScreen(screen, {});
+}
+
+function renderScreen(screen: Screen, params: Record<string, any>): void {
+  const root = document.getElementById('app');
+  if (!root) return;
+
+  currentScreen = screen;
+  currentComponent = null;
+
+  // Clear existing content
+  root.innerHTML = '';
+
+  if (screen === 'onboarding') {
+    // Full-screen onboarding, no shell
+    const onboarding = new OnboardingPage(root, () => {
+      navigate('hub');
     });
-    currentComponent = gameUI;
-  }
-
-  function showGameFrom(game: import('./game/Game.js').Game): void {
-    if (!isWordSetLoaded()) {
-      loadWordSet();
-    }
-    const gameUI = new GameUI(root!, game, () => {
-      showHome();
-    });
-    currentComponent = gameUI;
-  }
-
-  const params = new URLSearchParams(window.location.search);
-  if (params.has('game') && params.get('game') === '1') {
-    const p1 = params.get('p1') || 'Player 1';
-    const p2 = params.get('p2') || 'Player 2';
-    showGame(p1, p2);
-  } else {
-    showHome();
+    onboarding.render();
+    currentComponent = onboarding;
+  } else if (screen === 'game') {
+    // Game screen — direct render, no bottom nav
+    showGame(params, root);
+  } else if (screen === 'hub') {
+    // Hub dashboard — in shell
+    showHub(root);
+  } else if (screen === 'profile') {
+    // Profile screen — in shell
+    showProfile(root);
+  } else if (screen === 'history') {
+    // History screen — in shell
+    showHistory(root);
+  } else if (screen === 'settings') {
+    // Settings screen — in shell
+    showSettings(root);
   }
 }
 
+/* ─── Screen Renders ──────────────────────────── */
+
+function showHub(root: HTMLElement): void {
+  if (!isWordSetLoaded()) {
+    loadWordSet();
+  }
+
+  hubPage = new HubPage(
+    document.createElement('div'),
+    (p1: string, p2: string) => {
+      GamePersistence.clear();
+      navigate('game', { p1, p2 });
+    },
+    () => {
+      navigate('game', { saved: true });
+    }
+  );
+  hubPage.render();
+
+  appShell?.render('hub', root.lastChild as HTMLElement || document.createElement('div'));
+  // Since AppShell replaces root content, we pass the hub's content differently
+  // Re-do: render hub directly inside shell
+  root.innerHTML = '';
+  const content = document.createElement('div');
+  hubPage = new HubPage(content, (p1: string, p2: string) => {
+    GamePersistence.clear();
+    navigate('game', { p1, p2 });
+  }, () => {
+    navigate('game', { saved: true });
+  });
+  hubPage.render();
+  appShell?.render('hub', content);
+  currentComponent = hubPage;
+}
+
+function showGame(params: Record<string, any>, root: HTMLElement): void {
+  if (!isWordSetLoaded()) {
+    loadWordSet();
+  }
+
+  const p1 = (params.p1 as string) || 'Player 1';
+  const p2 = (params.p2 as string) || 'Player 2';
+
+  if (params.saved) {
+    const data = GamePersistence.load();
+    if (data) {
+      const game = GamePersistence.restoreGame(data);
+      gameUI = new GameUI(root, game, () => {
+        navigate('hub');
+      });
+    } else {
+      gameUI = new GameUI(root, undefined, () => {
+        navigate('hub');
+      });
+    }
+  } else {
+    // Create game store record
+    createActiveGameRecord([p1, p2]);
+    gameUI = new GameUI(root, undefined, () => {
+      navigate('hub');
+    });
+  }
+  currentComponent = gameUI;
+}
+
+function showProfile(root: HTMLElement): void {
+  const content = document.createElement('div');
+  const profile = new ProfilePage(content);
+  profile.render();
+  appShell?.render('profile', content);
+  currentComponent = profile;
+}
+
+function showHistory(root: HTMLElement): void {
+  const content = document.createElement('div');
+  const history = new HistoryPage(content);
+  history.render();
+  appShell?.render('history', content);
+  currentComponent = history;
+}
+
+function showSettings(root: HTMLElement): void {
+  const content = document.createElement('div');
+  const settings = new SettingsPage(content);
+  settings.render();
+  appShell?.render('settings', content);
+  currentComponent = settings;
+}
+
+// ─── Legacy URL param support ─────────────────────
+// Support ?game=1&p1=X&p2=Y for direct links
+function checkLegacyUrl(): boolean {
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.has('game') && urlParams.get('game') === '1') {
+    const p1 = urlParams.get('p1') || 'Player 1';
+    const p2 = urlParams.get('p2') || 'Player 2';
+    navigate('game', { p1, p2 });
+    return true;
+  }
+  return false;
+}
+
+/* ─── Bootstrap ────────────────────────────────── */
+
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
+  document.addEventListener('DOMContentLoaded', () => {
+    if (!checkLegacyUrl()) {
+      init();
+    }
+  });
 } else {
-  init();
+  if (!checkLegacyUrl()) {
+    init();
+  }
 }
