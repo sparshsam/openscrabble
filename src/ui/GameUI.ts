@@ -60,6 +60,7 @@ interface Selection {
 export class GameUI {
   private game: Game;
   private root: HTMLElement;
+  private gameId: string | null = null;
   private selectedTile: Selection | null = null;
   private swapSelection: Set<string> = new Set();
   private onBackToHome: (() => void) | null = null;
@@ -69,16 +70,16 @@ export class GameUI {
     root: HTMLElement,
     game?: Game,
     onBackToHome?: () => void,
-    onAutoSave?: (scores: number[], turnNumber: number) => void
+    onAutoSave?: (scores: number[], turnNumber: number) => void,
+    gameId?: string
   ) {
-    console.log('[GameUI] constructor, root element:', root?.id || root?.className, 'has game:', !!game);
     this.root = root;
     this.game = game ?? new Game();
+    this.gameId = gameId ?? null;
     this.onBackToHome = onBackToHome ?? null;
     this.onAutoSave = onAutoSave ?? null;
     try {
       this.render();
-      console.log('[GameUI] render completed');
     } catch (e) {
       console.error('[GameUI] render failed:', e);
       showGameError(root, 'Failed to render game board. Please try starting a new game.');
@@ -86,7 +87,11 @@ export class GameUI {
   }
 
   private save(): void {
-    GamePersistence.save(this.game);
+    if (this.gameId) {
+      GamePersistence.save(this.game, this.gameId);
+    } else {
+      GamePersistence.save(this.game);
+    }
     if (this.onAutoSave) {
       const state = this.game.getState();
       this.onAutoSave(

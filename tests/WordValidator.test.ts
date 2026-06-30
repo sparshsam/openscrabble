@@ -139,4 +139,25 @@ describe('WordValidator', () => {
     expect(WordValidator.isValid('KO')).toBe(true);
     expect(WordValidator.isValid('ko')).toBe(true);
   });
+
+  // ─── v0.4.5 Dictionary Patch ──────────────────────────
+
+  it('accepts LOONIE (v0.4.5 patch: missing SOWPODS word)', () => {
+    expect(WordValidator.isValid('LOONIE')).toBe(true);
+    expect(WordValidator.isValid('loonie')).toBe(true);
+  });
+
+  it('accepts TOONIE (v0.4.5 patch: Canadianism)', () => {
+    expect(WordValidator.isValid('toonie')).toBe(true);
+  });
+
+  it('accepts POUTINE (v0.4.5 patch: common Collins word)', () => {
+    expect(WordValidator.isValid('poutine')).toBe(true);
+  });
+
+  it('still rejects known invalid words after dictionary patch', () => {
+    expect(WordValidator.isValid('xyzw')).toBe(false);
+    expect(WordValidator.isValid('qzzq')).toBe(false);
+    expect(WordValidator.isValid('asdfgh')).toBe(false);
+  });
 });

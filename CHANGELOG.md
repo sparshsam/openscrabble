@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.4.5 — Dictionary Integrity + Per-Game Save Fix (2026-06-29)
+
+Critical fixes: LOONIE now accepted as a valid word. Resuming a saved game now restores exact board/rack state instead of resetting.
+
+### Fixed
+- **Dictionary**: Added LOONIE, TOONIE, POUTINE to `MISSING_WORDS` patch array. The word list had "looney" but not "loonie" (valid SOWPODS/Collins word).
+- **Per-game save persistence**: `GameUI.save()` was saving to the legacy key (`openscrabble_save`) instead of the per-game key (`openscrabble_save_<gameId>`). Every autosave after the first move went to the wrong key. Resume loaded the per-game key which had stale initial state → board/rack were reset. Fixed by storing `gameId` in GameUI and passing it to `GamePersistence.save()`.
+- **All three showGame paths** (load by gameId, legacy fallback, metadata creation) now pass `gameId` to GameUI constructor.
+
+### Added
+- `MISSING_WORDS` array in `wordList.ts` — additive patch for missing SOWPODS/Collins words
+- 4 dictionary regression tests: LOONIE, TOONIE, POUTINE acceptance + invalid word rejection
+- 4 per-game persistence tests: save/load isolation, legacy key fallback, exists/clear API
+- v0.4.5 patch section in `docs/DICTIONARY.md`
+
+### Changed
+- Console logs cleaned: removed high-frequency GameUI render logs, kept low-volume routing/showGame traces
+
+### Tests
+- 9 test files, 131 total tests (+8 new)
+
 ## v0.4.4 — Hard Blocker: Game Screen Not Mounting (2026-06-29)
 
 Critical bugfix: Game screen never mounted because `createActiveGameRecord()` only created metadata records — no actual game state was saved. When `showGame()` tried to load by gameId, it found no save data, marked the record as abandoned, and bounced to hub.

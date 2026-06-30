@@ -5036,5 +5036,14 @@ const _w: string[] = [
 "zyme","zymes","zymic","zymin"
 ];
 
-export const WORD_SET: ReadonlySet<string> = new Set(_w);
-export const WORD_COUNT = 100664;
+// v0.4.5: Patch — missing valid SOWPODS/Collins words not in the original import.
+// These are valid Scrabble words verified against Collins Scrabble Words 2019+ / TWL 2021+.
+// Found during manual QA: "LOONIE" was rejected despite being a valid word.
+const MISSING_WORDS: string[] = [
+  "loonie",  // Canadian $1 coin (valid SOWPODS/Collins)
+  "toonie",  // Canadian $2 coin
+  "poutine", // Canadian dish
+];
+
+export const WORD_SET: ReadonlySet<string> = new Set([..._w, ...MISSING_WORDS]);
+export const WORD_COUNT = _w.length + MISSING_WORDS.length;

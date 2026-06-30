@@ -44,3 +44,13 @@ The details dialog shows:
 2. **No inflections**: The list is a flat word set — it does not include grammatical information (tense, plural, etc.).
 3. **API-dependent definitions**: Word definitions require internet access. Offline definitions are not bundled to keep the bundle small.
 4. **Coverage gaps**: Some uncommon but valid Scrabble words may be missing. Some obscure entries may be present. No version tracking on the original source data.
+
+## v0.4.5 Patch
+
+The original word list was missing some valid SOWPODS/Collins words. An additive patch in `src/data/wordList.ts` merges a `MISSING_WORDS` array into the `WORD_SET` at build time.
+
+**Added words:** LOONIE, TOONIE, POUTINE (Canadianisms, valid Collins 2019+ / TWL 2021+).
+
+- **Adding words**: Edit `src/data/wordList.ts` — the `MISSING_WORDS` array at the end of the file.
+- **Verification**: Run `npx vitest run tests/WordValidator.test.ts` to confirm acceptance.
+- **Source**: Manual additions verified against Collins Scrabble Words 2019+ and TWL 2021+.

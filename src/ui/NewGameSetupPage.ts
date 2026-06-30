@@ -142,7 +142,6 @@ export class NewGameSetupPage {
     console.log('[NewGameSetup] startGame with players:', players);
     // Create game record and save key
     const record = createActiveGameRecord(players);
-    console.log('[NewGameSetup] created record:', record.id);
     GamePersistence.clear(); // clear old single-save key
     navigate('game', { gameId: record.id });
   }

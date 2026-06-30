@@ -227,4 +227,67 @@ describe('Rack behavior', () => {
     game.clearPending();
     expect(game.players[0]!.rack.filter((t) => t !== null).length).toBe(7);
   });
+
+  // ─── v0.4.5: Per-game save key tests ──────────────────
+
+  it('saves and loads per-gameId state', () => {
+    const gameA = new Game('Alice', 'Bob');
+    const gameB = new Game('Charlie', 'Diana');
+    const idA = 'game-a-123';
+    const idB = 'game-b-456';
+
+    GamePersistence.save(gameA, idA);
+    GamePersistence.save(gameB, idB);
+
+    const loadedA = GamePersistence.load(idA);
+    expect(loadedA).not.toBeNull();
+    expect(loadedA!.state.players[0]!.name).toBe('Alice');
+
+    const loadedB = GamePersistence.load(idB);
+    expect(loadedB).not.toBeNull();
+    expect(loadedB!.state.players[0]!.name).toBe('Charlie');
+  });
+
+  it('per-game saves are isolated (do not overwrite each other)', () => {
+    const gameA = new Game('Alice', 'Bob');
+    const gameB = new Game('Charlie', 'Diana');
+    const idA = 'game-a-789';
+    const idB = 'game-b-789';
+
+    // Make a move on game A
+    gameA.players[0]!.score = 50;
+    GamePersistence.save(gameA, idA);
+    GamePersistence.save(gameB, idB);
+
+    // Load game A — score must still be 50, not overwritten by gameB
+    const reloaded = GamePersistence.load(idA);
+    expect(reloaded).not.toBeNull();
+    expect(reloaded!.state.players[0]!.score).toBe(50);
+    expect(reloaded!.state.players[0]!.name).toBe('Alice');
+  });
+
+  it('legacy key is used when no gameId provided', () => {
+    const game = new Game('Test', 'Player');
+    GamePersistence.save(game);
+
+    // Legacy key should exist
+    const raw = mockStorage['openscrabble_save'];
+    expect(raw).not.toBeUndefined();
+
+    // Loading without gameId should return the legacy save
+    const loaded = GamePersistence.load();
+    expect(loaded).not.toBeNull();
+    expect(loaded!.state.players[0]!.name).toBe('Test');
+  });
+
+  it('exists and clear work for per-game keys', () => {
+    const game = new Game('A', 'B');
+    const id = 'game-exists-test';
+
+    expect(GamePersistence.hasSavedGame(id)).toBe(false);
+    GamePersistence.save(game, id);
+    expect(GamePersistence.hasSavedGame(id)).toBe(true);
+    GamePersistence.clear(id);
+    expect(GamePersistence.hasSavedGame(id)).toBe(false);
+  });
 });

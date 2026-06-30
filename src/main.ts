@@ -166,7 +166,6 @@ function renderScreen(screen: Screen, params: Record<string, any>): void {
     return;
   }
 
-  console.log('[renderScreen] screen:', screen, 'params:', JSON.stringify(params));
   currentScreen = screen;
   currentComponent = null;
   root.innerHTML = '';
@@ -246,7 +245,7 @@ function showGame(params: Record<string, any>, root: HTMLElement): void {
         navigate('hub');
       }, (scores, turnNumber) => {
         touchActiveGame(gameId, scores, turnNumber);
-      });
+      }, gameId);
       currentComponent = gameUI;
       return;
     }
@@ -263,7 +262,7 @@ function showGame(params: Record<string, any>, root: HTMLElement): void {
           navigate('hub');
         }, (scores, turnNumber) => {
           touchActiveGame(gameId, scores, turnNumber);
-        });
+        }, gameId);
         currentComponent = gameUI;
         return;
       }
@@ -281,7 +280,7 @@ function showGame(params: Record<string, any>, root: HTMLElement): void {
         navigate('hub');
       }, (scores, turnNumber) => {
         touchActiveGame(gameId, scores, turnNumber);
-      });
+      }, gameId);
       currentComponent = gameUI;
       return;
     }
