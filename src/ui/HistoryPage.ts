@@ -1,9 +1,9 @@
 /**
- * HistoryPage v0.4.1 — real game history from LocalGameStore.
+ * HistoryPage v0.4.2 — real game history from LocalGameStore.
  *
  * Shows:
- *   - Active games (in progress)
- *   - Completed games (finished)
+ *   - Active games (resume by gameId)
+ *   - Completed games
  *   - Abandoned games
  *   - Empty state when no games exist
  */
@@ -52,16 +52,15 @@ export class HistoryPage {
       const abandoned = allGames.filter((g) => g.status === 'abandoned');
 
       if (active.length > 0) {
-        page.appendChild(this.createSection('Active Games', active));
+        page.appendChild(this.createSection('Active Games', active, true));
       }
       if (completed.length > 0) {
-        page.appendChild(this.createSection('Completed', completed));
+        page.appendChild(this.createSection('Completed', completed, false));
       }
       if (abandoned.length > 0) {
-        page.appendChild(this.createSection('Abandoned', abandoned));
+        page.appendChild(this.createSection('Abandoned', abandoned, false));
       }
 
-      // Clear all
       const clearBtn = document.createElement('button');
       clearBtn.className = 'btn history-clear-btn';
       clearBtn.textContent = 'Clear All History';
@@ -82,7 +81,7 @@ export class HistoryPage {
     return page;
   }
 
-  private createSection(title: string, games: GameRecord[]): HTMLElement {
+  private createSection(title: string, games: GameRecord[], clickable: boolean): HTMLElement {
     const section = document.createElement('div');
     section.className = 'history-section';
 
@@ -96,12 +95,14 @@ export class HistoryPage {
 
     for (const game of games) {
       const item = document.createElement('div');
-      item.className = 'history-item';
+      item.className = `history-item${clickable ? ' history-item-clickable' : ''}`;
 
       const dateStr = new Date(game.lastPlayedDate).toLocaleDateString(undefined, {
         month: 'short',
         day: 'numeric',
         year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
       });
 
       let resultBadge = '';
@@ -113,9 +114,12 @@ export class HistoryPage {
         resultBadge = `<span class="history-badge history-badge-winner">${this.escHtml(game.winner)} won</span>`;
       }
 
+      // Use actual player names from the game record
+      const displayPlayers = game.players.join(' vs ');
+
       item.innerHTML = `
         <div class="history-item-top">
-          <span class="history-players">${this.escHtml(game.players.join(' vs '))}</span>
+          <span class="history-players">${displayPlayers}</span>
           ${resultBadge}
         </div>
         <div class="history-item-details">
@@ -128,17 +132,15 @@ export class HistoryPage {
         </div>
       `;
 
-      // Click to continue (for active games)
-      if (game.status === 'active') {
-        item.classList.add('history-item-clickable');
+      if (clickable && game.status === 'active') {
         item.addEventListener('click', () => {
-          // Try loading the save
-          const saveKey = game.saveKey || 'openscrabble_save';
+          const saveKey = game.saveKey || `openscrabble_save_${game.id}`;
           const saveData = localStorage.getItem(saveKey);
-          if (saveData) {
-            navigate('game', { saved: true, gameId: game.id });
+          // Also check the legacy key or the auto-generated key
+          const legacyData = localStorage.getItem('openscrabble_save');
+          if (saveData || legacyData) {
+            navigate('game', { gameId: game.id });
           } else {
-            // Save was lost — mark as abandoned
             updateGameRecord(game.id, { status: 'abandoned', completedDate: new Date().toISOString() });
             this.render();
           }

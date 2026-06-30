@@ -77,6 +77,7 @@ export function parseHash(): { screen: Screen; params: RouteParams } {
   if (queryStr) {
     const searchParams = new URLSearchParams(queryStr);
     if (searchParams.has('saved')) params.saved = true;
+    if (searchParams.has('gameId')) params.gameId = searchParams.get('gameId')!;
     if (searchParams.has('p1')) params.p1 = searchParams.get('p1')!;
     if (searchParams.has('p2')) params.p2 = searchParams.get('p2')!;
   }
@@ -110,6 +111,7 @@ function buildHash(screen: Screen, params: RouteParams): string {
   const parts: string[] = [screen];
   const query: string[] = [];
   if (params.saved) query.push('saved');
+  if (params.gameId) query.push(`gameId=${encodeURIComponent(params.gameId)}`);
   if (params.p1) query.push(`p1=${encodeURIComponent(params.p1)}`);
   if (params.p2) query.push(`p2=${encodeURIComponent(params.p2)}`);
   if (query.length > 0) parts.push('?' + query.join('&'));

@@ -1,34 +1,28 @@
 /**
- * HubPage v0.4.1 — polished mobile-first game hub.
+ * HubPage v0.4.2 — multi-game hub.
  *
- * Sections:
- *   - Welcome header with player name
- *   - Continue Game card (if active save exists)
+ * Shows:
+ *   - Welcome header
  *   - New Game button
- *   - Recent Games summary (last 3 completed)
- *   - Quick links: Profile, Dictionary & Rules, Settings
+ *   - Running Games list (active games)
+ *   - Recent Completed Games
+ *   - Quick links
  */
 
-import { GamePersistence } from '../game/Persistence.js';
 import { getCurrentUser } from '../auth/AuthService.js';
 import { navigate } from '../lib/routes.js';
-import { loadPlayerSetup } from '../profile/ProfileService.js';
 import { loadAllGames, getActiveGames } from '../lib/LocalGameStore.js';
-import { showModal } from './Modal.js';
 
 export class HubPage {
   private root: HTMLElement;
-  private onNewGame: (p1: string, p2: string) => void;
-  private onContinueGame: () => void;
+  private onNewGame: () => void;
 
   constructor(
     root: HTMLElement,
-    onNewGame: (p1: string, p2: string) => void,
-    onContinueGame: () => void
+    onNewGame: () => void
   ) {
     this.root = root;
     this.onNewGame = onNewGame;
-    this.onContinueGame = onContinueGame;
   }
 
   render(): void {
@@ -41,9 +35,11 @@ export class HubPage {
     page.className = 'hub-page';
 
     page.appendChild(this.createHeader());
-    page.appendChild(this.createActions());
-    const recentGames = this.createRecentGames();
-    if (recentGames) page.appendChild(recentGames);
+    page.appendChild(this.createNewGameButton());
+    const runningGames = this.createRunningGames();
+    if (runningGames) page.appendChild(runningGames);
+    const recentCompleted = this.createRecentCompleted();
+    if (recentCompleted) page.appendChild(recentCompleted);
     page.appendChild(this.createQuickLinks());
 
     return page;
@@ -67,115 +63,59 @@ export class HubPage {
     return header;
   }
 
-  private createActions(): HTMLElement {
+  private createNewGameButton(): HTMLElement {
     const section = document.createElement('div');
     section.className = 'hub-actions';
 
-    const hasSaved = GamePersistence.hasSavedGame();
-    const activeGames = getActiveGames();
-    const setup = loadPlayerSetup();
-
-    // ── Continue Game Card ──
-    if (hasSaved && activeGames.length > 0) {
-      const active = activeGames[0]!;
-      const continueCard = document.createElement('div');
-      continueCard.className = 'hub-continue-card';
-      continueCard.innerHTML = `
-        <div class="hub-continue-info">
-          <span class="hub-continue-label">Continue Game</span>
-          <span class="hub-continue-players">${this.escHtml(active.players.join(' vs '))}</span>
-          <span class="hub-continue-turns">Turn ${active.totalTurns + 1}</span>
-        </div>
-        <span class="hub-continue-arrow">▶</span>
-      `;
-      continueCard.addEventListener('click', () => {
-        this.onContinueGame();
-      });
-      section.appendChild(continueCard);
-    } else if (hasSaved) {
-      // Save exists but no game store record — fallback
-      const continueCard = document.createElement('div');
-      continueCard.className = 'hub-continue-card';
-      continueCard.innerHTML = `
-        <div class="hub-continue-info">
-          <span class="hub-continue-label">Continue Game</span>
-          <span class="hub-continue-players">Saved game available</span>
-        </div>
-        <span class="hub-continue-arrow">▶</span>
-      `;
-      continueCard.addEventListener('click', () => {
-        this.onContinueGame();
-      });
-      section.appendChild(continueCard);
-    } else {
-      // No save — empty state
-      const emptyCard = document.createElement('div');
-      emptyCard.className = 'hub-continue-card hub-continue-empty';
-      emptyCard.innerHTML = `
-        <div class="hub-continue-info">
-          <span class="hub-continue-label">No Game in Progress</span>
-          <span class="hub-continue-players">Start a new game below</span>
-        </div>
-      `;
-      section.appendChild(emptyCard);
-    }
-
-    // ── New Game Button ──
-    const newGameBtn = document.createElement('button');
-    newGameBtn.className = 'btn hub-new-game-btn';
-    newGameBtn.innerHTML = '🎮 New Game';
-    newGameBtn.addEventListener('click', () => {
-      if (hasSaved) {
-        showModal(
-          'New Game',
-          'Start a new game? Your saved game will be lost.',
-          'New Game',
-          () => {
-            GamePersistence.clear();
-            navigate('game', { p1: setup.player1Name, p2: setup.player2Name });
-          }
-        );
-        return;
-      }
-      navigate('game', { p1: setup.player1Name, p2: setup.player2Name });
-    });
-    section.appendChild(newGameBtn);
-
-    // ── Quick Play — use saved player names ──
-    const quickPlay = document.createElement('button');
-    quickPlay.className = 'btn hub-quick-play-btn';
-    quickPlay.innerHTML = `<span class="hub-qp-label">${this.escHtml(setup.player1Name)} vs ${this.escHtml(setup.player2Name)}</span><span class="hub-qp-arrow">→</span>`;
-    quickPlay.addEventListener('click', () => {
-      if (hasSaved) {
-        showModal(
-          'New Game',
-          'Start a new game? Your saved game will be lost.',
-          'New Game',
-          () => {
-            GamePersistence.clear();
-            navigate('game', { p1: setup.player1Name, p2: setup.player2Name });
-          }
-        );
-        return;
-      }
-      navigate('game', { p1: setup.player1Name, p2: setup.player2Name });
-    });
-    section.appendChild(quickPlay);
-
-    // ── Player names edit inline hint ──
-    const editHint = document.createElement('button');
-    editHint.className = 'btn hub-edit-names-btn';
-    editHint.textContent = '✏ Change player names';
-    editHint.addEventListener('click', () => navigate('settings'));
-    section.appendChild(editHint);
+    const btn = document.createElement('button');
+    btn.className = 'btn hub-new-game-btn';
+    btn.innerHTML = '🎮 New Game';
+    btn.addEventListener('click', () => this.onNewGame());
+    section.appendChild(btn);
 
     return section;
   }
 
-  private createRecentGames(): HTMLElement | null {
+  private createRunningGames(): HTMLElement | null {
+    const active = getActiveGames();
+    if (active.length === 0) return null;
+
+    const section = document.createElement('div');
+    section.className = 'hub-section';
+
+    const heading = document.createElement('div');
+    heading.className = 'hub-section-title';
+    heading.textContent = 'Running Games';
+    section.appendChild(heading);
+
+    for (const game of active) {
+      const item = document.createElement('div');
+      item.className = 'hub-running-item';
+      const dateStr = new Date(game.lastPlayedDate).toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      item.innerHTML = `
+        <div class="hub-running-info">
+          <span class="hub-running-players">${this.escHtml(game.players.join(' vs '))}</span>
+          <span class="hub-running-meta">Turn ${game.totalTurns + 1} · ${dateStr}</span>
+        </div>
+        <span class="hub-running-arrow">▶</span>
+      `;
+      item.addEventListener('click', () => {
+        navigate('game', { gameId: game.id });
+      });
+      section.appendChild(item);
+    }
+
+    return section;
+  }
+
+  private createRecentCompleted(): HTMLElement | null {
     const allGames = loadAllGames();
     const completed = allGames.filter((g) => g.status === 'completed' || g.status === 'abandoned');
-
     if (completed.length === 0) return null;
 
     const section = document.createElement('div');
@@ -225,27 +165,20 @@ export class HubPage {
     const section = document.createElement('div');
     section.className = 'hub-quick-links';
 
-    const links: { label: string; icon: string; screen: string }[] = [
-      { label: 'Profile & Stats', icon: '👤', screen: 'profile' },
-      { label: 'Dictionary & Rules', icon: '📖', screen: '' }, // toggle inline
-      { label: 'Settings', icon: '⚙', screen: 'settings' },
+    const links: { label: string; icon: string; action: () => void }[] = [
+      { label: 'Profile & Stats', icon: '👤', action: () => navigate('profile') },
+      { label: 'Dictionary & Rules', icon: '📖', action: () => rulesPanel.classList.toggle('open') },
+      { label: 'Settings', icon: '⚙', action: () => navigate('settings') },
     ];
 
     for (const link of links) {
       const btn = document.createElement('button');
       btn.className = 'btn hub-quick-link';
       btn.innerHTML = `<span class="hub-ql-icon">${link.icon}</span><span class="hub-ql-label">${link.label}</span>`;
-      if (link.screen === 'settings' || link.screen === 'profile') {
-        btn.addEventListener('click', () => navigate(link.screen as any));
-      } else {
-        btn.addEventListener('click', () => {
-          rulesPanel.classList.toggle('open');
-        });
-      }
+      btn.addEventListener('click', link.action);
       section.appendChild(btn);
     }
 
-    // Inline rules accordion
     const rulesPanel = document.createElement('div');
     rulesPanel.className = 'hub-rules-panel';
     rulesPanel.innerHTML = `

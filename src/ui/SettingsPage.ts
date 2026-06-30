@@ -1,19 +1,21 @@
 /**
- * SettingsPage v0.4.1 — organized sections with safe modals.
+ * SettingsPage v0.4.2 — organized sections with safe modals.
  *
  * Sections:
- *   - Profile (edit name, sign out)
- *   - Gameplay (player names, default settings)
- *   - Appearance (theme)
- *   - Data (reset onboarding, clear history, clear save)
+ *   - Profile (username, status, edit name, sign out)
+ *   - Appearance (theme: segmented toggle)
+ *   - Data (reset onboarding, clear history, clear all saves)
+ *   - About
+ *
+ * No Player 1/Player 2 editor — that's in New Game flow.
  */
 
 import { getCurrentUser, signOut } from '../auth/AuthService.js';
-import { loadPlayerSetup, savePlayerSetup } from '../profile/ProfileService.js';
 import { GamePersistence } from '../game/Persistence.js';
 import { clearAllGameRecords } from '../lib/LocalGameStore.js';
 import { navigate } from '../lib/routes.js';
 import { showModal, showInfoModal } from './Modal.js';
+import { loadGuestProfile, saveGuestProfile } from '../auth/AuthService.js';
 import pkg from '../../package.json';
 
 export class SettingsPage {
@@ -37,34 +39,10 @@ export class SettingsPage {
     heading.textContent = 'Settings';
     page.appendChild(heading);
 
-    // ── Profile Section ──
     page.appendChild(this.createProfileSection());
-
-    // ── Gameplay Section ──
-    page.appendChild(this.createGameplaySection());
-
-    // ── Appearance Section ──
-    const appearanceSection = document.createElement('div');
-    appearanceSection.className = 'settings-section';
-    appearanceSection.innerHTML = `<div class="settings-section-heading">Appearance</div>`;
-    appearanceSection.appendChild(this.createThemeToggle());
-    page.appendChild(appearanceSection);
-
-    // ── Data Section ──
+    page.appendChild(this.createAppearanceSection());
     page.appendChild(this.createDataSection());
-
-    // ── About ──
-    const aboutSection = document.createElement('div');
-    aboutSection.className = 'settings-section';
-    aboutSection.innerHTML = `
-      <div class="settings-section-heading">About</div>
-      <div class="settings-about">
-        <p>OpenScrabble v${pkg.version}</p>
-        <p>Local two-player Scrabble game.</p>
-        <p class="settings-about-link"><a href="https://github.com/sparshsam/openscrabble" target="_blank" rel="noopener">GitHub</a></p>
-      </div>
-    `;
-    page.appendChild(aboutSection);
+    page.appendChild(this.createAboutSection());
 
     return page;
   }
@@ -75,31 +53,78 @@ export class SettingsPage {
     section.innerHTML = `<div class="settings-section-heading">Profile</div>`;
 
     const user = getCurrentUser();
-    const row1 = document.createElement('div');
-    row1.className = 'settings-action-row';
-    row1.innerHTML = `
+
+    const nameRow = document.createElement('div');
+    nameRow.className = 'settings-action-row';
+    nameRow.innerHTML = `
       <span class="settings-action-label">Username</span>
       <span class="settings-action-value">${this.escHtml(user?.username || 'Player')}</span>
     `;
-    row1.addEventListener('click', () => navigate('profile'));
-    section.appendChild(row1);
+    nameRow.addEventListener('click', () => this.showEditName());
+    section.appendChild(nameRow);
 
     const badge = document.createElement('div');
     badge.className = 'settings-action-row';
     badge.innerHTML = `
       <span class="settings-action-label">Status</span>
-      <span class="settings-action-value settings-status-badge">${user?.isGuest ? 'Guest' : 'Signed In'}</span>
+      <span class="settings-action-value"><span class="settings-status-badge">${user?.isGuest ? 'Guest' : 'Signed In'}</span></span>
     `;
     section.appendChild(badge);
 
     return section;
   }
 
-  private createGameplaySection(): HTMLElement {
+  private createAppearanceSection(): HTMLElement {
     const section = document.createElement('div');
     section.className = 'settings-section';
-    section.innerHTML = `<div class="settings-section-heading">Gameplay</div>`;
-    section.appendChild(this.createPlayerNameEditor());
+    section.innerHTML = `<div class="settings-section-heading">Appearance</div>`;
+
+    const container = document.createElement('div');
+    container.className = 'settings-theme-row';
+
+    const label = document.createElement('span');
+    label.className = 'settings-theme-label';
+    label.textContent = 'Theme';
+
+    const current = document.documentElement.getAttribute('data-theme');
+    const effective = current || 'system';
+
+    // Segmented toggle
+    const toggle = document.createElement('div');
+    toggle.className = 'theme-segmented';
+
+    const options = [
+      { value: 'system', label: 'System' },
+      { value: 'light', label: 'Light' },
+      { value: 'dark', label: 'Dark' },
+    ];
+
+    for (const opt of options) {
+      const btn = document.createElement('button');
+      btn.className = `theme-seg-btn${opt.value === effective ? ' theme-seg-active' : ''}`;
+      btn.textContent = opt.label;
+      btn.addEventListener('click', () => {
+        // Update toggle state
+        toggle.querySelectorAll('.theme-seg-btn').forEach((b) => b.classList.remove('theme-seg-active'));
+        btn.classList.add('theme-seg-active');
+
+        // Apply theme
+        const html = document.documentElement;
+        if (opt.value === 'system') {
+          html.removeAttribute('data-theme');
+          localStorage.removeItem('openscrabble-theme');
+        } else {
+          html.setAttribute('data-theme', opt.value);
+          localStorage.setItem('openscrabble-theme', opt.value);
+        }
+      });
+      toggle.appendChild(btn);
+    }
+
+    container.appendChild(label);
+    container.appendChild(toggle);
+    section.appendChild(container);
+
     return section;
   }
 
@@ -133,8 +158,8 @@ export class SettingsPage {
     clearHistoryBtn.addEventListener('click', () => {
       showModal(
         'Clear History',
-        'Remove all game history records. This cannot be undone.',
-        'Clear',
+        'Remove all game history records. This cannot be undone.\nActive games will also be removed.',
+        'Clear All',
         () => {
           clearAllGameRecords();
           showInfoModal('Done', 'Game history cleared.');
@@ -143,99 +168,93 @@ export class SettingsPage {
     });
     section.appendChild(clearHistoryBtn);
 
-    // Clear save
-    const clearSaveBtn = document.createElement('button');
-    clearSaveBtn.className = 'btn settings-action-btn';
-    clearSaveBtn.textContent = 'Clear Current Save';
-    clearSaveBtn.addEventListener('click', () => {
+    // Clear all saves
+    const clearSavesBtn = document.createElement('button');
+    clearSavesBtn.className = 'btn settings-action-btn';
+    clearSavesBtn.textContent = 'Clear All Saved Games';
+    clearSavesBtn.addEventListener('click', () => {
       showModal(
-        'Clear Save',
-        'Remove the current saved game? Any unsaved progress will be lost.',
-        'Clear Save',
+        'Clear Saves',
+        'Remove all saved game state? Any unsaved progress will be lost.',
+        'Clear All',
         () => {
-          GamePersistence.clear();
-          showInfoModal('Done', 'Saved game cleared.');
+          GamePersistence.clearAll();
+          showInfoModal('Done', 'All saved games cleared.');
         }
       );
     });
-    section.appendChild(clearSaveBtn);
+    section.appendChild(clearSavesBtn);
 
     return section;
   }
 
-  private createThemeToggle(): HTMLElement {
-    const container = document.createElement('div');
-    container.className = 'settings-theme-row';
-
-    const currentTheme = document.documentElement.getAttribute('data-theme') || 'system';
-    const label = document.createElement('span');
-    label.className = 'settings-theme-label';
-    label.textContent = 'Theme';
-
-    const select = document.createElement('select');
-    select.className = 'settings-select';
-    select.innerHTML = `
-      <option value="system" ${currentTheme === 'system' || (!currentTheme) ? 'selected' : ''}>System</option>
-      <option value="light" ${currentTheme === 'light' ? 'selected' : ''}>Light</option>
-      <option value="dark" ${currentTheme === 'dark' ? 'selected' : ''}>Dark</option>
+  private createAboutSection(): HTMLElement {
+    const section = document.createElement('div');
+    section.className = 'settings-section';
+    section.innerHTML = `
+      <div class="settings-section-heading">About</div>
+      <div class="settings-about">
+        <p>OpenScrabble v${pkg.version}</p>
+        <p>Local two-player Scrabble game.</p>
+        <p class="settings-about-link"><a href="https://github.com/sparshsam/openscrabble" target="_blank" rel="noopener">GitHub</a></p>
+      </div>
     `;
-    select.addEventListener('change', () => {
-      const val = select.value;
-      const html = document.documentElement;
-      if (val === 'system') {
-        html.removeAttribute('data-theme');
-        localStorage.removeItem('openscrabble-theme');
-      } else {
-        html.setAttribute('data-theme', val);
-        localStorage.setItem('openscrabble-theme', val);
-      }
-    });
-
-    container.appendChild(label);
-    container.appendChild(select);
-    return container;
+    return section;
   }
 
-  private createPlayerNameEditor(): HTMLElement {
-    const container = document.createElement('div');
-    container.className = 'settings-players';
-
-    const setup = loadPlayerSetup();
+  private showEditName(): void {
     const user = getCurrentUser();
+    if (!user) return;
 
-    const row1 = document.createElement('div');
-    row1.className = 'settings-player-row';
-    row1.innerHTML = `
-      <span class="settings-player-badge">P1</span>
-      <input type="text" id="settings-p1" class="settings-input" value="${this.escHtml(user?.username || setup.player1Name)}" maxlength="20" />
+    const overlay = document.createElement('div');
+    overlay.className = 'app-modal-overlay';
+
+    const dialog = document.createElement('div');
+    dialog.className = 'app-modal-dialog';
+
+    dialog.innerHTML = `
+      <div class="app-modal-title">Edit Name</div>
+      <div class="app-modal-text" style="margin-bottom:12px">
+        <input type="text" id="edit-name-input" class="settings-input" value="${this.escHtml(user.username)}" maxlength="24" autofocus />
+      </div>
+      <div class="app-modal-actions">
+        <button id="edit-name-cancel" class="btn">Cancel</button>
+        <button id="edit-name-save" class="btn btn-primary">Save</button>
+      </div>
     `;
-    container.appendChild(row1);
 
-    const row2 = document.createElement('div');
-    row2.className = 'settings-player-row';
-    row2.innerHTML = `
-      <span class="settings-player-badge">P2</span>
-      <input type="text" id="settings-p2" class="settings-input" value="${this.escHtml(setup.player2Name)}" maxlength="20" />
-    `;
-    container.appendChild(row2);
-
-    const saveBtn = document.createElement('button');
-    saveBtn.className = 'btn btn-primary settings-save-btn';
-    saveBtn.textContent = 'Save Names';
-    saveBtn.addEventListener('click', () => {
-      const p1Input = document.getElementById('settings-p1') as HTMLInputElement;
-      const p2Input = document.getElementById('settings-p2') as HTMLInputElement;
-      savePlayerSetup({
-        player1Name: p1Input?.value?.trim() || setup.player1Name,
-        player2Name: p2Input?.value?.trim() || setup.player2Name,
-        playerCount: 2,
-      });
-      saveBtn.textContent = '✓ Saved!';
-      setTimeout(() => { saveBtn.textContent = 'Save Names'; }, 2000);
+    overlay.appendChild(dialog);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) overlay.remove();
     });
-    container.appendChild(saveBtn);
+    document.body.appendChild(overlay);
 
-    return container;
+    const input = dialog.querySelector('#edit-name-input') as HTMLInputElement;
+    const saveBtn = dialog.querySelector('#edit-name-save') as HTMLButtonElement;
+    const cancelBtn = dialog.querySelector('#edit-name-cancel') as HTMLButtonElement;
+
+    input.focus();
+    input.select();
+
+    const save = () => {
+      const val = input.value.trim();
+      if (val.length > 0) {
+        const guest = loadGuestProfile();
+        if (guest) {
+          guest.username = val;
+          guest.displayName = val;
+          saveGuestProfile(guest);
+        }
+        overlay.remove();
+        this.render();
+      }
+    };
+
+    saveBtn.addEventListener('click', save);
+    cancelBtn.addEventListener('click', () => overlay.remove());
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') save();
+    });
   }
 
   private escHtml(s: string): string {

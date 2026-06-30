@@ -63,20 +63,30 @@ export class GameUI {
   private selectedTile: Selection | null = null;
   private swapSelection: Set<string> = new Set();
   private onBackToHome: (() => void) | null = null;
+  private onAutoSave: ((scores: number[], turnNumber: number) => void) | null = null;
 
   constructor(
     root: HTMLElement,
     game?: Game,
-    onBackToHome?: () => void
+    onBackToHome?: () => void,
+    onAutoSave?: (scores: number[], turnNumber: number) => void
   ) {
     this.root = root;
     this.game = game ?? new Game();
     this.onBackToHome = onBackToHome ?? null;
+    this.onAutoSave = onAutoSave ?? null;
     this.render();
   }
 
   private save(): void {
     GamePersistence.save(this.game);
+    if (this.onAutoSave) {
+      const state = this.game.getState();
+      this.onAutoSave(
+        state.players.map((p) => p.score),
+        state.turnNumber
+      );
+    }
   }
 
   private render(): void {

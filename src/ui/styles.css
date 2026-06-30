@@ -2663,3 +2663,153 @@ body {
 .settings-action-btn:last-child {
   margin-bottom: 0;
 }
+
+/* ══════════════════════════════════════════════════════
+   v0.4.2 — Multi-Game Persistence + UX Corrections
+   ══════════════════════════════════════════════════════ */
+
+/* ── Danger button for destructive actions ──── */
+.btn-danger {
+  background: var(--error) !important;
+  color: #fff;
+  border: none;
+}
+
+.btn-danger:hover {
+  opacity: 0.9;
+}
+
+/* ── Hub: New Game Button ────────────────────── */
+.hub-new-game-btn {
+  width: 100%;
+  padding: 18px var(--space-5) !important;
+  background: var(--accent) !important;
+  color: #fff;
+  border: none;
+  font-size: var(--text-md);
+  font-weight: var(--font-bold);
+  border-radius: var(--radius-lg) !important;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  text-align: center;
+}
+
+.hub-new-game-btn:hover {
+  opacity: 0.9;
+}
+
+/* ── Hub: Running Games List ─────────────────── */
+.hub-running-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-5);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-visible);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  margin-bottom: var(--space-2);
+}
+
+.hub-running-item:hover {
+  border-color: var(--accent);
+  background: var(--bg-surface-muted);
+}
+
+.hub-running-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hub-running-players {
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+}
+
+.hub-running-meta {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.hub-running-arrow {
+  font-size: 1.1rem;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+/* ── Segmented Theme Toggle ───────────────────── */
+.theme-segmented {
+  display: flex;
+  background: var(--bg-surface-muted);
+  border-radius: var(--radius-full);
+  padding: 3px;
+  gap: 2px;
+}
+
+.theme-seg-btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  font-family: inherit;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.theme-seg-btn:hover {
+  color: var(--text-secondary);
+}
+
+.theme-seg-active {
+  background: var(--bg-base) !important;
+  color: var(--text-primary) !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+/* ── Cancel / New Game Page Styles ───────────── */
+.onboarding-cancel-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  padding: 8px;
+  width: 100%;
+  text-align: center;
+}
+
+.onboarding-cancel-btn:hover {
+  color: var(--text-secondary);
+}
+
+.new-game-page {
+  justify-content: flex-start;
+  padding-top: var(--space-14);
+}
+
+/* ── Settings Theme Row (override from v0.4.0) ─ */
+.settings-theme-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface);
+  border-radius: var(--radius-md);
+}
+
+.settings-theme-label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+}
+

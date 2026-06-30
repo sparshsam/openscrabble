@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.4.2 — Multi-Game Persistence + UX Correction Pass (2026-06-29)
+
+Core game/session model corrected to support multiple active local games. New game flow moved to a dedicated setup page. Onboarding simplified.
+
+### Changed
+- **Onboarding**: Removed Player 2/3/4 setup — only username + auth choice (Guest/Google)
+- **New Game flow**: New dedicated setup page (`NewGameSetupPage`) with P1-P4 editable player names, P1 defaults to current username
+- **Multi-game persistence**: Each game gets its own save key (`openscrabble_save_<gameId>`). Starting a new game never overwrites existing active games
+- **Hub**: Removed single "Continue Game" card. Shows Running Games list (all active games), New Game button, Recent Completed, quick links
+- **History**: Uses actual player names from game records. Clicking active games resumes by gameId
+- **Settings**: Removed P1/P2 name editor. Removed theme select dropdown — replaced with clean segmented toggle (System/Light/Dark)
+- **GameUI**: Added optional `onAutoSave` callback, called after every save with scores and turn number
+- **GamePersistence**: Supports per-gameId save/load (`openscrabble_save_<gameId>`). Added `clearAll()` method
+
+### Added
+- `NewGameSetupPage.ts` — New game player setup with 2-4 players
+- Segmented theme toggle in Appearance settings
+- Running Games list on hub with resume-by-tap
+
+### Preserved
+- Legacy `openscrabble_save` key still supported for backward compatibility
+- Existing v0.4.1 records preserved
+- All gameplay, dark/light mode, mobile-first responsive
+- 103 existing tests passing
+
 ## v0.4.1 — Game Hub + Local History Foundation (2026-06-29)
 
 Game hub polish and local game history system. Makes OpenScrabble feel like a complete mobile game shell while preserving local-first guest play.

@@ -1,24 +1,25 @@
 import type { GameState, Tile } from '../types.js';
 import { Game } from './Game.js';
 
-const STORAGE_KEY = 'openscrabble_save';
+const LEGACY_KEY = 'openscrabble_save';
 
 export interface SaveData {
   state: GameState;
-  allTiles: Tile[]; // all tiles in play (board + racks) so we can reconstruct the bag
+  allTiles: Tile[];
   timestamp: number;
 }
 
 /**
  * Persistence layer for OpenScrabble.
- * Saves/restores game state to localStorage.
+ * Supports both legacy single-save (openscrabble_save) and
+ * per-game saves (openscrabble_save_<gameId>).
  */
 export class GamePersistence {
-  /** Save current game state to localStorage */
-  static save(game: Game): void {
+  /** Save current game state to a key (default: legacy key) */
+  static save(game: Game, gameId?: string): void {
+    const key = gameId ? `openscrabble_save_${gameId}` : LEGACY_KEY;
     try {
       const state = game.getState();
-      // Collect all tiles currently in play
       const allTiles: Set<Tile> = new Set();
       for (const row of state.board) {
         for (const t of row) {
@@ -36,16 +37,17 @@ export class GamePersistence {
         allTiles: [...allTiles],
         timestamp: Date.now(),
       };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      localStorage.setItem(key, JSON.stringify(data));
     } catch (e) {
       console.warn('Failed to save game state:', e);
     }
   }
 
-  /** Load saved game state from localStorage */
-  static load(): SaveData | null {
+  /** Load saved game state from a key (default: legacy key) */
+  static load(gameId?: string): SaveData | null {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const key = gameId ? `openscrabble_save_${gameId}` : LEGACY_KEY;
+      const raw = localStorage.getItem(key);
       if (!raw) return null;
       const data = JSON.parse(raw) as SaveData;
       if (!data.state || !data.allTiles) return null;
@@ -60,21 +62,13 @@ export class GamePersistence {
     const state = data.state;
     const game = new Game(state.players[0]!.name, state.players[1]!.name);
 
-    // Reconstruct board
     game.board.loadGrid(state.board);
-
-    // Reconstruct bag: we need to reset it and then "reserve" the correct tiles
     game.bag.reset();
-    // The bag now has 100 tiles. We need to remove tiles that are in play
-    // (on board or in racks) so only the correct ones remain.
-    // Approach: empty the bag of in-play tiles by draining and returning
     const allInPlayIds = new Set(data.allTiles.map((t) => t.id));
-    // Draw all tiles from bag, keep those NOT in play, return them
     const allBagTiles = game.bag.draw(100);
     const toKeep = allBagTiles.filter((t) => !allInPlayIds.has(t.id));
     game.bag.returnTiles(toKeep.map((t) => t.id));
 
-    // Restore player state with sorted racks
     const sortRack = (r: (import('../types.js').Tile | null)[]) => {
       const tiles = r.filter((t): t is import('../types.js').Tile => t !== null);
       tiles.sort((a, b) => {
@@ -110,24 +104,44 @@ export class GamePersistence {
     game.turnNumber = state.turnNumber;
     game.consecutivePasses = state.consecutivePasses;
     game.swapMode = false;
-    // pendingTiles starts empty on a fresh Game
 
     return game;
   }
 
-  /** Check if a saved game exists */
-  static hasSavedGame(): boolean {
-    return localStorage.getItem(STORAGE_KEY) !== null;
+  /** Check if a saved game exists for a key (default: legacy) */
+  static hasSavedGame(gameId?: string): boolean {
+    const key = gameId ? `openscrabble_save_${gameId}` : LEGACY_KEY;
+    return localStorage.getItem(key) !== null;
   }
 
-  /** Clear saved game */
-  static clear(): void {
-    localStorage.removeItem(STORAGE_KEY);
+  /** Check if legacy save exists */
+  static hasLegacySave(): boolean {
+    return localStorage.getItem(LEGACY_KEY) !== null;
   }
 
-  /** Get save timestamp or null */
-  static getSavedTimestamp(): number | null {
-    const data = GamePersistence.load();
+  /** Clear a specific save (default: legacy) */
+  static clear(gameId?: string): void {
+    const key = gameId ? `openscrabble_save_${gameId}` : LEGACY_KEY;
+    localStorage.removeItem(key);
+  }
+
+  /** Clear all saves (legacy + per-game) */
+  static clearAll(): void {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (k === LEGACY_KEY || k.startsWith('openscrabble_save_'))) {
+        keys.push(k);
+      }
+    }
+    for (const k of keys) {
+      localStorage.removeItem(k);
+    }
+  }
+
+  /** Get save timestamp for a key */
+  static getSavedTimestamp(gameId?: string): number | null {
+    const data = GamePersistence.load(gameId);
     return data?.timestamp ?? null;
   }
 }
