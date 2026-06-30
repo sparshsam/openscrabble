@@ -1,5 +1,39 @@
 # Changelog
 
+## v0.4.8 — Game Results + End Screen (2026-06-29)
+
+### Added
+- **Post-game result screen**: Displayed when game reaches `gameover` phase (normal end or resignation). Includes:
+  - **Winner card** — large amber gradient card with 👑 crown, winner name, score, "Winner" subtitle. Shows 🤝 and "Tie Game" for ties.
+  - **End reason badge** — shows "Resigned — X resigned" or "Game completed"
+  - **Final scores section** — both players with scores in large accent-colored numbers
+  - **Game stats** — total turns, best word
+  - **🔄 Rematch button** — starts new game with same player names, finalizes the current game record
+  - **🏠 Home button** — returns to hub, finalizes the game record
+  - **📋 Full History** — shows move history if moves were made
+- **`endReason` field** on `GameRecord` (`'normal' | 'resign'`) — tracks how the game ended
+- **`endReason` field** on `Game` class — set to `'normal'` on bag-empty or 6-pass game-over, `'resign'` on resignation
+- **`finalizeGame()`** in LocalGameStore — saves end result when player leaves the result screen
+- CSS for all result screen components (winner card, scores, stats, actions)
+
+### Changed
+- Resign, Rematch, and Home buttons all finalize the game record before leaving (via `resignGame()` or `finalizeGame()`)
+- `GameUI.confirmResign()` sets `this.game.endReason = 'resign'` before saving
+- Old `.game-over-banner` and `.game-summary-stats` classes kept for backward compatibility (no longer actively rendered)
+
+## v0.4.7 — Profile Stats Winner Accuracy Fix (2026-06-29)
+
+### Fixed
+- **`computeStats()` win logic**: `normalizedName` helper was ignoring its `name` argument and always returning `currentUsername` — every completed game with a winner counted as a win.
+- **`normalizedName` now correctly uses the `name` argument**: `(name) => name.toLowerCase().trim()`
+- **`computeStats()` accepts `currentUsername`**: Only counts as win when the winner string matches the current user (case-insensitive).
+- **Loss tracking added**: `gamesLost` and `winRate` fields in `PlayerStats` type
+- **Active/abandoned games excluded**: Only `status: 'completed'` games count toward stats
+- **Profile labels updated**: Completed / Wins / Losses / Win Rate / Best Score / Average Score
+
+### Added
+- 7 stats regression tests: normal win, user resigns (loss), opponent resigns (win), active excluded, abandoned excluded, case-insensitive matching, mixed results
+
 ## v0.4.6 — Collins Dictionary Enforcement + Resign Flow (2026-06-29)
 
 ### Fixed

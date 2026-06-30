@@ -193,6 +193,38 @@ export function resignGame(
     winner,
     isTie: false,
     totalTurns,
+    endReason: 'resign',
+    completedDate: new Date().toISOString(),
+    lastPlayedDate: new Date().toISOString(),
+  });
+}
+
+/**
+ * Finalize an active game with end result during normal game-over.
+ * Records the winner, scores, and end reason.
+ */
+export function finalizeGame(
+  id: string,
+  scores: number[],
+  winner: string | null,
+  isTie: boolean,
+  totalTurns: number,
+  bestWord: string | null,
+  bestWordScore: number,
+  totalMoves: number,
+  bingos: number
+): void {
+  updateGameRecord(id, {
+    status: 'completed',
+    scores,
+    winner,
+    isTie,
+    totalTurns,
+    bestWord,
+    bestWordScore,
+    totalMoves,
+    bingos,
+    endReason: 'normal',
     completedDate: new Date().toISOString(),
     lastPlayedDate: new Date().toISOString(),
   });

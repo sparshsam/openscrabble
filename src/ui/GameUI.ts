@@ -4,7 +4,7 @@ import { GamePersistence } from '../game/Persistence.js';
 import { getPremiumType } from '../game/Board.js';
 import { type WordDefinition, fetchDefinition } from '../game/WordDefinitions.js';
 import { WordValidator } from '../game/WordValidator.js';
-import { resignGame } from '../lib/LocalGameStore.js';
+import { resignGame, finalizeGame } from '../lib/LocalGameStore.js';
 import { navigate } from '../lib/routes.js';
 
 /**
@@ -703,59 +703,120 @@ export class GameUI {
       const summary = this.game.getSummary();
       const winner = summary.winner;
 
-      // Banner
-      const resultDiv = document.createElement('div');
-      resultDiv.className = 'game-over-banner';
+      // ── Result Screen Container ──
+      const resultScreen = document.createElement('div');
+      resultScreen.className = 'game-result-screen';
+      actions.appendChild(resultScreen);
+
+      // ── Winner Card ──
+      const winnerCard = document.createElement('div');
+      winnerCard.className = 'result-winner-card';
       if (winner) {
-        resultDiv.textContent = `🏆 ${winner.name} wins! ${winner.score} pts`;
+        winnerCard.innerHTML = `
+          <div class="result-crown">👑</div>
+          <div class="result-winner-name">${this.esc(winner.name)}</div>
+          <div class="result-winner-score">${winner.score} pts</div>
+          <div class="result-subtitle">Winner</div>
+        `;
       } else {
-        resultDiv.textContent = `🤝 Tie game! ${state.players[0]!.score} - ${state.players[1]!.score}`;
+        winnerCard.innerHTML = `
+          <div class="result-crown">🤝</div>
+          <div class="result-winner-name">Tie Game</div>
+          <div class="result-winner-score">${summary.finalScores[0]} – ${summary.finalScores[1]}</div>
+          <div class="result-subtitle">Nobody wins</div>
+        `;
       }
-      actions.appendChild(resultDiv);
+      resultScreen.appendChild(winnerCard);
 
-      // Summary stats
-      const statsDiv = document.createElement('div');
-      statsDiv.className = 'game-summary-stats';
-      statsDiv.innerHTML = `
-        <div class="summary-row"><span>Turns played</span><span>${summary.totalTurns}</span></div>
-        <div class="summary-row"><span>Best word</span><span>${summary.bestWord ? `"${summary.bestWord.word}" (${summary.bestWord.score} pts)` : '—'}</span></div>
-        <div class="summary-row"><span>${state.players[0]!.name}</span><span>${summary.finalScores[0]} pts</span></div>
-        <div class="summary-row"><span>${state.players[1]!.name}</span><span>${summary.finalScores[1]} pts</span></div>
+      // ── End Reason Badge ──
+      const endReasonText = this.game.endReason === 'resign'
+        ? `Resigned — ${state.players[state.currentPlayerIndex]!.name} resigned`
+        : 'Game completed';
+      const reasonBadge = document.createElement('div');
+      reasonBadge.className = 'result-end-reason';
+      reasonBadge.textContent = endReasonText;
+      resultScreen.appendChild(reasonBadge);
+
+      // ── Final Scores ──
+      const scoresSection = document.createElement('div');
+      scoresSection.className = 'result-scores-section';
+      scoresSection.innerHTML = `
+        <div class="result-section-title">Final Scores</div>
+        <div class="result-score-row">
+          <span class="result-score-name">${this.esc(state.players[0]!.name)}</span>
+          <span class="result-score-value">${summary.finalScores[0]}</span>
+        </div>
+        <div class="result-score-row">
+          <span class="result-score-name">${this.esc(state.players[1]!.name)}</span>
+          <span class="result-score-value">${summary.finalScores[1]}</span>
+        </div>
       `;
-      actions.appendChild(statsDiv);
+      resultScreen.appendChild(scoresSection);
 
-      // History button
-      if (summary.moveHistory.length > 0) {
-        const historyBtn = document.createElement('button');
-        historyBtn.className = 'btn';
-        historyBtn.textContent = 'View Full History';
-        historyBtn.addEventListener('click', () => {
-          this.showMoveHistory();
-        });
-        actions.appendChild(historyBtn);
-      }
+      // ── Game Stats ──
+      const statsSection = document.createElement('div');
+      statsSection.className = 'result-stats-section';
+      statsSection.innerHTML = `
+        <div class="result-stat-row">
+          <span>Total Turns</span><span>${summary.totalTurns}</span>
+        </div>
+        <div class="result-stat-row">
+          <span>Best Word</span><span>${summary.bestWord ? `"${summary.bestWord.word}" (${summary.bestWord.score})` : '—'}</span>
+        </div>
+      `;
+      resultScreen.appendChild(statsSection);
 
-      const newGameBtn = document.createElement('button');
-      newGameBtn.className = 'btn btn-primary';
-      newGameBtn.textContent = 'New Game';
-      newGameBtn.addEventListener('click', () => {
+      // ── Actions ──
+      const resultActions = document.createElement('div');
+      resultActions.className = 'result-actions';
+
+      const rematchBtn = document.createElement('button');
+      rematchBtn.className = 'btn btn-primary result-btn';
+      rematchBtn.textContent = '🔄 Rematch';
+      rematchBtn.addEventListener('click', () => {
         GamePersistence.clear();
+        if (this.gameId) {
+          const s = this.game.getState();
+          const scores = s.players.map((p) => p.score);
+          const bestWord = this.game.getSummary().bestWord;
+          finalizeGame(this.gameId, scores, winner?.name ?? null, !winner, s.turnNumber, bestWord?.word ?? null, bestWord?.score ?? 0, s.turnNumber, 0);
+        }
         this.game = new Game(
           this.game.players[0]!.name,
           this.game.players[1]!.name
         );
+        this.game.endReason = 'normal';
         this.render();
       });
-      actions.appendChild(newGameBtn);
+      resultActions.appendChild(rematchBtn);
 
-      const homeBtn = document.createElement('button');
-      homeBtn.className = 'btn';
-      homeBtn.textContent = 'Home';
-      homeBtn.addEventListener('click', () => {
+      const hubBtn = document.createElement('button');
+      hubBtn.className = 'btn result-btn';
+      hubBtn.textContent = '🏠 Home';
+      hubBtn.addEventListener('click', () => {
         GamePersistence.clear();
+        if (this.gameId) {
+          const s = this.game.getState();
+          const scores = s.players.map((p) => p.score);
+          const bestWord = this.game.getSummary().bestWord;
+          finalizeGame(this.gameId, scores, winner?.name ?? null, !winner, s.turnNumber, bestWord?.word ?? null, bestWord?.score ?? 0, s.turnNumber, 0);
+        }
         this.onBackToHome?.();
       });
-      actions.appendChild(homeBtn);
+      resultActions.appendChild(hubBtn);
+
+      // Show Full History button
+      if (summary.moveHistory.length > 0) {
+        const historyBtn = document.createElement('button');
+        historyBtn.className = 'btn result-btn result-btn-secondary';
+        historyBtn.textContent = `📋 Full History (${summary.moveHistory.length})`;
+        historyBtn.addEventListener('click', () => {
+          this.showMoveHistory();
+        });
+        resultActions.appendChild(historyBtn);
+      }
+
+      resultScreen.appendChild(resultActions);
     }
 
     return actions;
@@ -1025,6 +1086,8 @@ export class GameUI {
       `${playerName}, are you sure you want to resign? The other player will win.`,
       'Resign',
       () => {
+        // Set end reason on game before recording
+        this.game.endReason = 'resign';
         // Record resignation
         this.save();
         if (this.gameId) {

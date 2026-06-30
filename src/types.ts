@@ -90,10 +90,13 @@ export interface PlayerSetup {
 
 export type GameRecordStatus = 'active' | 'completed' | 'abandoned';
 
+export type EndReason = 'normal' | 'resign' | 'abandon' | null;
+
 /** A game record stored locally in the game store */
 export interface GameRecord {
   id: string;
   status: GameRecordStatus;
+  endReason?: EndReason;
   createdDate: string;  // ISO
   lastPlayedDate: string; // ISO
   completedDate?: string; // ISO
